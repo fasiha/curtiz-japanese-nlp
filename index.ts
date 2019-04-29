@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import * as jdepp from './jdepp';
 import {kata2hira} from './kana';
 import {goodMorphemePredicate, invokeMecab, maybeMorphemesToMorphemes, Morpheme, parseMecab} from './mecabUnidic';
