@@ -1,14 +1,27 @@
 {
   "name": "curtiz-japanese-nlp",
   "version": "1.0.0",
-  "description": "",
+  "description": "Annotate Curtiz2 Markdown files with Japanese natural language parsing",
   "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "bin": {
+    "curtiz-japanese-nlp": "./index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "typings": "index.ts",
+  "scripts": {
+    "test": "tape test*.js",
+    "build": "tsc -p ."
+  },
+  "keywords": [
+    "mecab",
+    "unidic",
+    "jdepp",
+    "japanese",
+    "nlp",
+    "curtiz",
+    "flashcard"
+  ],
+  "author": "Ahmed Fasih",
+  "license": "Unlicense",
   "devDependencies": {
     "@types/node": "^11.13.8",
     "get-stdin": "^7.0.0",

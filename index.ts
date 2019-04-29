@@ -10,7 +10,7 @@ async function parse(sentence: string): Promise<{morphemes: Morpheme[]; bunsetsu
   return {morphemes, bunsetsus};
 }
 
-export async function addJdepp(raw: string, morphemes: Morpheme[]): Promise<Morpheme[][]> {
+async function addJdepp(raw: string, morphemes: Morpheme[]): Promise<Morpheme[][]> {
   let jdeppRaw = await jdepp.invokeJdepp(raw);
   let jdeppSplit = jdepp.parseJdepp('', jdeppRaw);
   let bunsetsus: Morpheme[][] = [];

@@ -43,7 +43,6 @@ function addJdepp(raw, morphemes) {
         return bunsetsus;
     });
 }
-exports.addJdepp = addJdepp;
 const bunsetsuToString = (morphemes) => morphemes.map(m => m.literal).join('');
 function splitAtHeaders(text) {
     const headerRe = /^#+\s+.+$/;
