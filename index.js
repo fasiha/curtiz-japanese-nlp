@@ -106,7 +106,9 @@ function parseHeaderBlock(block) {
                         .map(m => `- @flash ${(m.partOfSpeech.length > 2 && m.partOfSpeech[1] === 'proper')
                         ? m.literal
                         : m.lemma} @ ${kana_1.kata2hira(m.lemmaReading)}`);
-                    block.splice(1, 0, ...flashBullets);
+                    if (flashBullets.length > 1) {
+                        block.splice(1, 0, ...flashBullets);
+                    }
                     // add @fill lines
                     block.splice(1, 0, ...identifyFillInBlanks(parsed.bunsetsus));
                     // remove @pleaseParse
@@ -118,7 +120,7 @@ function parseHeaderBlock(block) {
                         .map(m => utils_1.hasKanji(m.literal) ? kana_1.kata2hira(m.literal === m.lemma ? m.lemmaReading : m.pronunciation)
                         : m.literal)
                         .join('');
-                    block[0] = block[0] + ' @ ' + parsedReading;
+                    block[0] = block[0] + ' @ ' + kana_1.kata2hira(parsedReading);
                 }
             }
         }
@@ -174,16 +176,20 @@ function identifyFillInBlanks(bunsetsus) {
             continue;
         }
         const pos0 = first.partOfSpeech[0];
+        let searchForParticles = true;
         if (bunsetsu.length > 1 && (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject'))) {
             let ignoreRight = utils_1.filterRight(bunsetsu, m => !mecabUnidic_1.goodMorphemePredicate(m));
             let goodBunsetsu = ignoreRight.length === 0 ? bunsetsu : bunsetsu.slice(0, -ignoreRight.length);
-            let cloze = bunsetsuToString(goodBunsetsu);
-            let left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('');
-            let right = bunsetsuToString(ignoreRight) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
-            literalClozes.set(generateContextClozed(left, cloze, right), goodBunsetsu);
+            if (goodBunsetsu.length > 1) {
+                searchForParticles = false;
+                let cloze = bunsetsuToString(goodBunsetsu);
+                let left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('');
+                let right = bunsetsuToString(ignoreRight) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
+                literalClozes.set(generateContextClozed(left, cloze, right), goodBunsetsu);
+            }
         }
-        else {
-            // only add particles if they're NOT inside conjugated phrases
+        // only add particles if they're NOT inside conjugated phrases
+        if (searchForParticles) {
             for (let [pidx, particle] of utils_1.enumerate(bunsetsu)) {
                 if (particlePredicate(particle)) {
                     let left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(bunsetsu.slice(0, pidx));
