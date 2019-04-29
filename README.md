@@ -47,11 +47,11 @@ This package provides:
 The command-line utility can be invoked on a file or can consume standard input. Make sure you have [Node.js](https://nodejs.org) installed, then in your terminal (Terminal.app in macOS, Command Prompt in Windows, xterm in Linux, etc.), run either of the following:
 
 ```
-$ npx -p curtiz-japanese-nlp curtiz-japanese-nlp README.md
+$ npx curtiz-japanese-nlp README.md
 ```
 and replace `README.md` with the path to your Markdown file, or
 ```
-$ cat README.md | npx -p curtiz-japanese-nlp curtiz-japanese-nlp
+$ cat README.md | npx curtiz-japanese-nlp
 ```
 
 ### Library API
