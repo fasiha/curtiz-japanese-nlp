@@ -27,7 +27,6 @@ function parse(sentence) {
         return { morphemes, bunsetsus };
     });
 }
-exports.parse = parse;
 function addJdepp(raw, morphemes) {
     return __awaiter(this, void 0, void 0, function* () {
         let jdeppRaw = yield jdepp.invokeJdepp(raw);
@@ -89,8 +88,24 @@ function parseHeaderBlock(block) {
                 const parsed = yield parse(line);
                 if (hasPleaseParse) {
                     // add @flash lines
-                    const flashBullets = parsed.morphemes.filter(m => utils_1.hasKanji(m.literal))
-                        .map(m => `- @flash ${m.lemma} @ ${kana_1.kata2hira(m.lemmaReading)}`);
+                    const flashBullets = parsed.morphemes
+                        .filter(m => {
+                        const pos = m.partOfSpeech.join('-');
+                        if (utils_1.hasKanji(m.literal) && !pos.endsWith('numeral')) {
+                            return true;
+                        }
+                        if (pos.endsWith('numeral')) {
+                            return false;
+                        }
+                        if (pos.startsWith('verb-general') || pos.startsWith('noun') || pos.startsWith('pronoun') ||
+                            pos.startsWith('adjective') || pos.startsWith('adverb')) {
+                            return true;
+                        }
+                        return false;
+                    })
+                        .map(m => `- @flash ${(m.partOfSpeech.length > 2 && m.partOfSpeech[1] === 'proper')
+                        ? m.literal
+                        : m.lemma} @ ${kana_1.kata2hira(m.lemmaReading)}`);
                     block.splice(1, 0, ...flashBullets);
                     // add @fill lines
                     block.splice(1, 0, ...identifyFillInBlanks(parsed.bunsetsus));
@@ -191,22 +206,22 @@ function identifyFillInBlanks(bunsetsus) {
     }
     return bullets;
 }
-const USAGE = `USAGE:
+const USAGE = `USAGE 1:
 $ node [this-script.js] [markdown.md]
-will print a parsed version of the input Markdown.`;
+
+USAGE 2:
+$ cat [markdown.md] | node [this-script.js]
+
+Both will print a parsed version of the input.`;
 if (require.main === module) {
     const promisify = require('util').promisify;
     const readFile = promisify(require('fs').readFile);
+    const getStdin = require('get-stdin');
     (function () {
         return __awaiter(this, void 0, void 0, function* () {
-            if (process.argv.length < 3) {
-                console.log(USAGE);
-                process.exit(1);
-                return;
-            }
-            // Read Markdown and split at header (`# blabla`)
-            const filename = process.argv[2];
-            let blocks = splitAtHeaders(yield readFile(filename, 'utf8'));
+            const text = process.argv[2] ? yield readFile(process.argv[2], 'utf8') : ((yield getStdin()) || USAGE);
+            // Split Markdown at header (`# blabla`)
+            let blocks = splitAtHeaders(text);
             // Parse headers
             let content = yield parseAllHeaderBlocks(blocks);
             // Print result

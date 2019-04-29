@@ -3,7 +3,7 @@ import {kata2hira} from './kana';
 import {goodMorphemePredicate, invokeMecab, maybeMorphemesToMorphemes, Morpheme, parseMecab} from './mecabUnidic';
 import {enumerate, filterRight, flatten, hasKanji, partitionBy, takeWhile} from './utils';
 
-export async function parse(sentence: string): Promise<{morphemes: Morpheme[]; bunsetsus: Morpheme[][];}> {
+async function parse(sentence: string): Promise<{morphemes: Morpheme[]; bunsetsus: Morpheme[][];}> {
   let rawMecab = await invokeMecab(sentence);
   let morphemes = maybeMorphemesToMorphemes(parseMecab(sentence, rawMecab)[0].filter(o => !!o));
   let bunsetsus = await addJdepp(rawMecab, morphemes);
@@ -65,8 +65,22 @@ export async function parseHeaderBlock(block: string[]): Promise<string[]> {
       const parsed = await parse(line);
       if (hasPleaseParse) {
         // add @flash lines
-        const flashBullets = parsed.morphemes.filter(m => hasKanji(m.literal))
-                                 .map(m => `- @flash ${m.lemma} @ ${kata2hira(m.lemmaReading)}`);
+        const flashBullets =
+            parsed.morphemes
+                .filter(m => {
+                  const pos = m.partOfSpeech.join('-');
+                  if (hasKanji(m.literal) && !pos.endsWith('numeral')) { return true; }
+                  if (pos.endsWith('numeral')) { return false; }
+                  if (pos.startsWith('verb-general') || pos.startsWith('noun') || pos.startsWith('pronoun') ||
+                      pos.startsWith('adjective') || pos.startsWith('adverb')) {
+                    return true;
+                  }
+                  return false;
+                })
+                .map(m => `- @flash ${
+                         (m.partOfSpeech.length > 2 && m.partOfSpeech[1] === 'proper')
+                             ? m.literal
+                             : m.lemma} @ ${kata2hira(m.lemmaReading)}`);
         block.splice(1, 0, ...flashBullets);
 
         // add @fill lines
@@ -167,21 +181,21 @@ function identifyFillInBlanks(bunsetsus: Morpheme[][]) {
   return bullets;
 }
 
-const USAGE = `USAGE:
+const USAGE = `USAGE 1:
 $ node [this-script.js] [markdown.md]
-will print a parsed version of the input Markdown.`;
+
+USAGE 2:
+$ cat [markdown.md] | node [this-script.js]
+
+Both will print a parsed version of the input.`;
 if (require.main === module) {
   const promisify = require('util').promisify;
   const readFile = promisify(require('fs').readFile);
+  const getStdin = require('get-stdin');
   (async function() {
-    if (process.argv.length < 3) {
-      console.log(USAGE);
-      process.exit(1);
-      return;
-    }
-    // Read Markdown and split at header (`# blabla`)
-    const filename = process.argv[2];
-    let blocks = splitAtHeaders(await readFile(filename, 'utf8'));
+    const text = process.argv[2] ? await readFile(process.argv[2], 'utf8') : ((await getStdin()) || USAGE);
+    // Split Markdown at header (`# blabla`)
+    let blocks = splitAtHeaders(text);
     // Parse headers
     let content = await parseAllHeaderBlocks(blocks);
     // Print result
