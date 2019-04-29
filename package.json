@@ -1,6 +1,6 @@
 {
   "name": "curtiz-japanese-nlp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Annotate Curtiz2 Markdown files with Japanese natural language parsing",
   "main": "index.js",
   "bin": {
@@ -24,8 +24,10 @@
   "license": "Unlicense",
   "devDependencies": {
     "@types/node": "^11.13.8",
-    "get-stdin": "^7.0.0",
     "tape": "^4.10.1",
     "typescript": "^3.4.5"
+  },
+  "dependencies": {
+    "get-stdin": "^7.0.0"
   }
 }
