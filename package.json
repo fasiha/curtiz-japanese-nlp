@@ -11,6 +11,8 @@
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^11.13.8",
+    "get-stdin": "^7.0.0",
+    "tape": "^4.10.1",
     "typescript": "^3.4.5"
   }
 }
