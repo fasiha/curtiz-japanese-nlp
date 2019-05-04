@@ -35,13 +35,13 @@ Both these optional adverbs are demonstrated below.
 
 ## This module's features
 
-This module uses [MeCab](https://github.com/taku910/mecab/) with the [UniDic](https://osdn.net/projects/unidic/) dictionary, and [J.DepP](http://www.tkl.iis.u-tokyo.ac.jp/~ynaga/jdepp/) bunsetsu chunker to add readings, `@fill`-in-the-blank quizzes, and `@flash` flashcards into a Curtiz Markdown file.
+This module uses [MeCab](https://github.com/taku910/mecab/) with the [UniDic](https://osdn.net/projects/unidic/) dictionary, and [J.DepP](http://www.tkl.iis.u-tokyo.ac.jp/~ynaga/jdepp/) bunsetsu chunker to add readings, `@fill`-in-the-blank quizzes, and `@` flashcards into a Curtiz Markdown file.
 
 > Make sure you have these three applications installed before attempting to use this!
 
 It will add a reading to the header if none exists.
 
-It will add sub-quizzes (`@fill` and `@flash`) if there is a special bullet under the header: `- @pleaseParse`.
+It will add sub-quizzes (`@fill` and `@`) if there is a special bullet under the header: `- @pleaseParse`.
 
 ## Usage
 This package provides:

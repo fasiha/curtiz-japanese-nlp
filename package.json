@@ -1,6 +1,6 @@
 {
   "name": "curtiz-japanese-nlp",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Annotate Curtiz2 Markdown files with Japanese natural language parsing",
   "main": "index.js",
   "bin": {
