@@ -53,51 +53,66 @@ export async function parseAllHeaderBlocks(blocks: string[][], concurrentLimit: 
 
 const PLEASE_PARSE_BLOCK = '- @pleaseParse';
 
+const flashableMorpheme = (m: Morpheme) => {
+  const pos = m.partOfSpeech.join('-');
+  if (hasKanji(m.literal) && !pos.endsWith('numeral')) { return true; }
+  if (pos.endsWith('numeral')) { return false; }
+  if (pos.startsWith('verb-general') || pos.startsWith('noun') || pos.startsWith('pronoun') ||
+      pos.startsWith('adjective') || pos.startsWith('adverb')) {
+    return true;
+  }
+  return false;
+};
 export async function parseHeaderBlock(block: string[]): Promise<string[]> {
   const atHeaderRe = /^#+\s+@\s+/;
   const match = block[0].match(atHeaderRe);
   if (match) {
     const line = block[0].slice(match[0].length);
+    let [prompt, response] = line.split('@').map(s => s.trim());
+
     // process line and block.
-    const hasResponse = line.includes('@');
+    const hasResponse = !!response;
     const hasPleaseParse =
         takeWhile(block.slice(1), s => s.startsWith('- @')).some(s => s.startsWith(PLEASE_PARSE_BLOCK));
     if (!hasResponse || hasPleaseParse) {
       const parsed = await parse(line);
+      if (!hasResponse) {
+        response = kata2hira(flatten(parsed.bunsetsus)
+                                 .filter(m => m.partOfSpeech[0] !== 'supplementary_symbol')
+                                 .map(m => hasKanji(m.literal)
+                                               ? kata2hira(m.literal === m.lemma ? m.lemmaReading : m.pronunciation)
+                                               : m.literal)
+                                 .join(''));
+        block[0] = block[0] + ' @ ' + response;
+      }
       if (hasPleaseParse) {
         // add @flash lines
-        const flashBullets =
-            parsed.morphemes
-                .filter(m => {
-                  const pos = m.partOfSpeech.join('-');
-                  if (hasKanji(m.literal) && !pos.endsWith('numeral')) { return true; }
-                  if (pos.endsWith('numeral')) { return false; }
-                  if (pos.startsWith('verb-general') || pos.startsWith('noun') || pos.startsWith('pronoun') ||
-                      pos.startsWith('adjective') || pos.startsWith('adverb')) {
-                    return true;
-                  }
-                  return false;
-                })
-                .map(m => `- @flash ${
-                         (m.partOfSpeech.length > 2 && m.partOfSpeech[1] === 'proper')
-                             ? m.literal
-                             : m.lemma} @ ${kata2hira(m.lemmaReading)}`);
-        if (flashBullets.length > 1) { block.splice(1, 0, ...flashBullets); }
+        let flashBullets: string[] = [];
+        for (let [midx, morpheme] of enumerate(parsed.morphemes)) {
+          if (flashableMorpheme(morpheme)) {
+            const mprompt = (morpheme.partOfSpeech[1] === 'proper') ? morpheme.literal : morpheme.lemma;
+            const mresponse = (morpheme.partOfSpeech[1] === 'proper') ? kata2hira(morpheme.pronunciation)
+                                                                      : kata2hira(morpheme.lemmaReading);
+
+            const left = parsed.morphemes.slice(0, midx).map(m => m.literal).join('');
+            const right = parsed.morphemes.slice(midx + 1).map(m => m.literal).join('');
+            let cloze = generateContextClozed(left, morpheme.literal, right);
+            let final = '';
+            if (mprompt === morpheme.literal && appearsExactlyOnce(prompt, morpheme.literal)) {
+              final = `- @ ${mprompt} @ ${mresponse}    @pos ${morpheme.partOfSpeech.join('-')}`;
+            } else {
+              final = `- @ ${mprompt} @ ${mresponse}    @pos ${morpheme.partOfSpeech.join('-')} @omit ${cloze}`;
+            }
+            flashBullets.push(final);
+          }
+        }
+        block.splice(1, 0, ...flashBullets);
 
         // add @fill lines
         block.splice(1, 0, ...identifyFillInBlanks(parsed.bunsetsus));
 
         // remove @pleaseParse
         block = block.filter(s => !s.startsWith(PLEASE_PARSE_BLOCK));
-      }
-      if (!hasResponse) {
-        const parsedReading =
-            flatten(parsed.bunsetsus)
-                .filter(m => m.partOfSpeech[0] !== 'supplementary_symbol')
-                .map(m => hasKanji(m.literal) ? kata2hira(m.literal === m.lemma ? m.lemmaReading : m.pronunciation)
-                                              : m.literal)
-                .join('');
-        block[0] = block[0] + ' @ ' + kata2hira(parsedReading);
       }
     }
   }

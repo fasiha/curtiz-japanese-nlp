@@ -18,15 +18,20 @@ Example:
 ### @ 僕の花の色 @ ぼくのはなのいろ
 - @fill 僕[の]花
 - @fill 花[の]色
-- @flash 僕 @ ぼく
-- @flash 花 @ はな
-- @flash 色 @ いろ
+- @ 僕 @ ぼく    @pos pronoun
+- @ 花 @ はな    @pos noun-common-general
+- @ 色 @ いろ    @pos noun-common-general
 
 This example demonstrates both sub-quizzes that are currently supported:
-- `@fill` allows for a fill-in-the-blank, where the prompt is shown minus the text to be filled in, and
-- `@flash` allows for independent flashcards to be loosely associated with this sentence. The format of `@flash` bullets is the same as `@`-headers: `prompt @ response`.
+- `@fill` allows for a fill-in-the-blank (perhaps where the prompt is shown, minus the text to be filled in), and
+- `@` indicates a flashcard just like the `@`-headers: `prompt @ response`. These are amenable to plain flashcards on their own as well as fill-in-the-blank in the sentence. If the sub-prompt (in this bullet) cannot be found or uniquely determined in the header's prompt, then an `@omit` adverb can be optionally used to indicate the portion of the header prompt to be hidden. The optional `@pos` adverb contains the part-of-speech (as determined by MeCab), and facilitates disambiguiation of flashcards.
 
-The two fill-in-the-blank sub-quizzes in the above example are for the two `の`s in the sentence. The three flashcards sub-quizzes in the above example are for the three kanji pronouns/nouns used.
+Both these optional adverbs are demonstrated below.
+
+### @ このおはなしを話す @ このおはなしをはなす
+- @fill を
+- @ 話 @ はなし    @pos noun-common-verbal_suru @omit はなし
+- @ 話す @ はなす    @pos verb-general
 
 ## This module's features
 

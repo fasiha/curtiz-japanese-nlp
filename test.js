@@ -16,7 +16,7 @@ test('pleaseParse, make flashcard', async t => {
   t.ok(parsed.every(s => !s.includes('pleaseParse')));
   t.is(parsed.length, 2);
   t.is(parsed[0], '# @ 豚さん @ ぶたさん');
-  t.is(parsed[1], `- @flash 豚 @ ぶた`);
+  t.ok(parsed[1].startsWith(`- @ 豚 @ ぶた`));
   t.end();
 });
 
@@ -35,8 +35,8 @@ test('pleaseParse, add flashcards for kana words', async t => {
 - @pleaseParse`.split('\n');
   const parsed = await curtiz.parseHeaderBlock(block);
   // t.comment(parsed.join('\n'));
-  t.ok(parsed.some(s => s === '- @flash 私 @ わたし'));
-  t.ok(parsed.some(s => s.endsWith(' @ はな'))); // Mecab Unidic parses this as 端 (edge?)
-  t.ok(parsed.some(s => s === '- @flash 良い @ よい'));
+  t.ok(parsed.some(s => s.startsWith('- @ 私 @ わたし')));
+  t.ok(parsed.some(s => s.includes(' @ はな'))); // Mecab Unidic parses this as 端 (edge?)
+  t.ok(parsed.some(s => s.startsWith('- @ 良い @ よい')));
   t.end();
 });
