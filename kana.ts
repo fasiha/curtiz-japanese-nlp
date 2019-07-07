@@ -5,8 +5,8 @@ let katakana = "ァアィイゥウェエォオカガキギクグケゲコゴサ�
 
 if (hiragana.length !== katakana.length) { throw new Error('Kana strings not same length?'); }
 
-let kata2hiraMap: Map<string, string> = new Map([]);
-let hira2kataMap: Map<string, string> = new Map([]);
+export let kata2hiraMap: Map<string, string> = new Map([]);
+export let hira2kataMap: Map<string, string> = new Map([]);
 hiragana.split('').forEach((h, i) => {
   kata2hiraMap.set(katakana[i], h);
   hira2kataMap.set(h, katakana[i])

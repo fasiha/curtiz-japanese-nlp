@@ -7,15 +7,15 @@ let katakana = "ァアィイゥウェエォオカガキギクグケゲコゴサ�
 if (hiragana.length !== katakana.length) {
     throw new Error('Kana strings not same length?');
 }
-let kata2hiraMap = new Map([]);
-let hira2kataMap = new Map([]);
+exports.kata2hiraMap = new Map([]);
+exports.hira2kataMap = new Map([]);
 hiragana.split('').forEach((h, i) => {
-    kata2hiraMap.set(katakana[i], h);
-    hira2kataMap.set(h, katakana[i]);
+    exports.kata2hiraMap.set(katakana[i], h);
+    exports.hira2kataMap.set(h, katakana[i]);
 });
-function kata2hira(s) { return s.split('').map(c => kata2hiraMap.get(c) || c).join(''); }
+function kata2hira(s) { return s.split('').map(c => exports.kata2hiraMap.get(c) || c).join(''); }
 exports.kata2hira = kata2hira;
-function hira2kata(s) { return s.split('').map(c => hira2kataMap.get(c) || c).join(''); }
+function hira2kata(s) { return s.split('').map(c => exports.hira2kataMap.get(c) || c).join(''); }
 exports.hira2kata = hira2kata;
 /*
 There are other ways of doing this. In Unicode, katakana is 96 codepoints above hiragana. So

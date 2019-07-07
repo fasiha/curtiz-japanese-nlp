@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import * as jdepp from './jdepp';
+import {addJdepp} from './jdepp';
 import {kata2hira} from './kana';
 import {goodMorphemePredicate, invokeMecab, maybeMorphemesToMorphemes, Morpheme, parseMecab} from './mecabUnidic';
 import {enumerate, filterRight, flatten, hasKanji, partitionBy, takeWhile} from './utils';
@@ -9,21 +9,6 @@ async function parse(sentence: string): Promise<{morphemes: Morpheme[]; bunsetsu
   let morphemes = maybeMorphemesToMorphemes(parseMecab(sentence, rawMecab)[0].filter(o => !!o));
   let bunsetsus = await addJdepp(rawMecab, morphemes);
   return {morphemes, bunsetsus};
-}
-
-async function addJdepp(raw: string, morphemes: Morpheme[]): Promise<Morpheme[][]> {
-  let jdeppRaw = await jdepp.invokeJdepp(raw);
-  let jdeppSplit = jdepp.parseJdepp('', jdeppRaw);
-  let bunsetsus: Morpheme[][] = [];
-  {
-    let added = 0;
-    for (let bunsetsu of jdeppSplit) {
-      // -1 because each `bunsetsu` array here will contain a header before the morphemes
-      bunsetsus.push(morphemes.slice(added, added + bunsetsu.length - 1));
-      added += bunsetsu.length - 1;
-    }
-  }
-  return bunsetsus;
 }
 
 const bunsetsuToString = (morphemes: Morpheme[]) => morphemes.map(m => m.literal).join('');

@@ -18,3 +18,18 @@ export function parseJdepp(original: string, result: string) {
   const pieces = result.trim().split('\n').filter(s => !(s.startsWith('#') || s.startsWith('EOS')));
   return partitionBy(pieces, v => v.startsWith('*'));
 }
+
+export async function addJdepp<Morpheme>(raw: string, morphemes: Morpheme[]): Promise<Morpheme[][]> {
+  let jdeppRaw = await invokeJdepp(raw);
+  let jdeppSplit = parseJdepp('', jdeppRaw);
+  let bunsetsus: Morpheme[][] = [];
+  {
+    let added = 0;
+    for (let bunsetsu of jdeppSplit) {
+      // -1 because each `bunsetsu` array here will contain a header before the morphemes
+      bunsetsus.push(morphemes.slice(added, added + bunsetsu.length - 1));
+      added += bunsetsu.length - 1;
+    }
+  }
+  return bunsetsus;
+}

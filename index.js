@@ -8,15 +8,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
-    result["default"] = mod;
-    return result;
-};
 Object.defineProperty(exports, "__esModule", { value: true });
-const jdepp = __importStar(require("./jdepp"));
+const jdepp_1 = require("./jdepp");
 const kana_1 = require("./kana");
 const mecabUnidic_1 = require("./mecabUnidic");
 const utils_1 = require("./utils");
@@ -24,24 +17,8 @@ function parse(sentence) {
     return __awaiter(this, void 0, void 0, function* () {
         let rawMecab = yield mecabUnidic_1.invokeMecab(sentence);
         let morphemes = mecabUnidic_1.maybeMorphemesToMorphemes(mecabUnidic_1.parseMecab(sentence, rawMecab)[0].filter(o => !!o));
-        let bunsetsus = yield addJdepp(rawMecab, morphemes);
+        let bunsetsus = yield jdepp_1.addJdepp(rawMecab, morphemes);
         return { morphemes, bunsetsus };
-    });
-}
-function addJdepp(raw, morphemes) {
-    return __awaiter(this, void 0, void 0, function* () {
-        let jdeppRaw = yield jdepp.invokeJdepp(raw);
-        let jdeppSplit = jdepp.parseJdepp('', jdeppRaw);
-        let bunsetsus = [];
-        {
-            let added = 0;
-            for (let bunsetsu of jdeppSplit) {
-                // -1 because each `bunsetsu` array here will contain a header before the morphemes
-                bunsetsus.push(morphemes.slice(added, added + bunsetsu.length - 1));
-                added += bunsetsu.length - 1;
-            }
-        }
-        return bunsetsus;
     });
 }
 const bunsetsuToString = (morphemes) => morphemes.map(m => m.literal).join('');
