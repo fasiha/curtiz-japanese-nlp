@@ -33,6 +33,18 @@ Both these optional adverbs are demonstrated below.
 - @ 話 @ はなし    @pos noun-common-verbal_suru @omit はなし
 - @ 話す @ はなす    @pos verb-general
 
+**Translations** are also available, on a per-block or per-bullet level. For example:
+
+### @ 私が来た @ わたしがきた
+- @translation @en I am here. @fr Je suis ici.
+- @ 私 @ わたし @ わたくし @ あたし @t-en I @t-fr je @t-de Ich
+
+When the `@translation` adverb is on its own bullet, it applies to the sentence. The language of the translation must be specified (in the above case, for the bullet-translation, English and French). Because of the format, the translation shouldn’t use `@`-symbols.
+
+The short-hand adverb for translation can also be placed on the header line, and it can be used for sub-quizzes. The short-hand combines the language into the adverb, i.e., `@t-en` for the English translation, `@t-de` for the German, etc. The language markers `en`, `fr`, etc., are currently informal and not enforced.
+
+*N.B.* Translations aren’t created by this library, but since this is serving as a soft-spec for the Curtiz format, I describe them here.
+
 ## This module's features
 
 This module uses [MeCab](https://github.com/taku910/mecab/) with the [UniDic](https://osdn.net/projects/unidic/) dictionary, and [J.DepP](http://www.tkl.iis.u-tokyo.ac.jp/~ynaga/jdepp/) bunsetsu chunker to add readings, `@fill`-in-the-blank quizzes, and `@` flashcards into a Curtiz Markdown file.
@@ -102,3 +114,10 @@ console.log(annotated.map(s => s.join('\n')).join('\n'));
 The first line slurps the contents of `README.md` and splits it into blocks at Markdown header boundaries, then annotates them all.
 
 The second line logs the entire annotated Markdown.
+
+## Useful helpers
+### Awk
+If you have a file containing just lines of text and you want to parse them all, this [Awk](https://developer.ibm.com/tutorials/l-awk1/) script can pre-process them to a format amenable for this tool:
+```shell
+cat text | awk '{if (NF>0) {print "## @ " $0 " @ \n- @pleaseParse"} else {print $0}}' | node index.js
+```
