@@ -391,7 +391,6 @@ if (require.main === module) {
       return m ? [m.literal, m.pronunciation, m.lemmaReading, m.lemma, m.partOfSpeech.join(ELEMENTSEP),
                 (m.inflectionType || []).join(ELEMENTSEP), (m.inflection || []).join(ELEMENTSEP)] : [];
     })));
-    printMarkdownTable(
-        table, 'Literal,Pronunciation,Lemma Reading,Lemma,Part of Speech,Inflection Type,Inflection'.split(','));
+    printMarkdownTable(table, 'Literal,Pron.,Lemma Read.,Lemma,PoS,Infl. Type,Infl.'.split(','));
   })();
 }

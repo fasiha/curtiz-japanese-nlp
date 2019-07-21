@@ -138,21 +138,20 @@ EOF
 ```
 This will print out the following Markdown table:
 
-| Literal | Pronunciation | Lemma Reading | Lemma | Part of Speech                    | Inflection Type | Inflection         |
-| ------- | ------------- | ------------- | ----- | --------------------------------- | --------------- | ------------------ |
-| ほら    | ホラ          | ホラ          | ほら  | interjection-general              |                 |                    |
-| 、      |               |               | 、    | supplementary_symbol-comma        |                 |                    |
-|         |               |               |       |                                   |                 |                    |
-| あれ    | アレ          | アレ          | 彼れ  | pronoun                           |                 |                    |
-| が      | ガ            | ガ            | が    | particle-case                     |                 |                    |
-| 小      | ショー        | ショウ        | 小    | prefix                            |                 |                    |
-| 学校    | ガッコー      | ガッコウ      | 学校  | noun-common-general               |                 |                    |
-| だ      | ダ            | ダ            | だ    | auxiliary_verb                    | auxiliary-da    | conclusive-general |
-| よ      | ヨ            | ヨ            | よ    | particle-phrase_final             |                 |                    |
-| 。      |               |               | 。    | supplementary_symbol-period       |                 |                    |
-| 」      |               |               | 」    | supplementary_symbol-bracket_open |                 |                    |
-|         |               |               |       |                                   |                 |                    |
-
+| Literal | Pron.    | Lemma Read. | Lemma | PoS                               | Infl. Type   | Infl.              |
+| ------- | -------- | ----------- | ----- | --------------------------------- | ------------ | ------------------ |
+| ほら    | ホラ     | ホラ        | ほら  | interjection-general              |              |                    |
+| 、      |          |             | 、    | supplementary_symbol-comma        |              |                    |
+|         |          |             |       |                                   |              |                    |
+| あれ    | アレ     | アレ        | 彼れ  | pronoun                           |              |                    |
+| が      | ガ       | ガ          | が    | particle-case                     |              |                    |
+| 小      | ショー   | ショウ      | 小    | prefix                            |              |                    |
+| 学校    | ガッコー | ガッコウ    | 学校  | noun-common-general               |              |                    |
+| だ      | ダ       | ダ          | だ    | auxiliary_verb                    | auxiliary-da | conclusive-general |
+| よ      | ヨ       | ヨ          | よ    | particle-phrase_final             |              |                    |
+| 。      |          |             | 。    | supplementary_symbol-period       |              |                    |
+| 」      |          |             | 」    | supplementary_symbol-bracket_open |              |                    |
+|         |          |             |       |                                   |              |                    |
 
 ### Awk
 If you have a file containing just lines of text and you want to parse them all, this [Awk](https://developer.ibm.com/tutorials/l-awk1/) script can pre-process them to a format amenable for this tool:
