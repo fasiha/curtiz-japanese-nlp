@@ -28,7 +28,9 @@
     "typescript": "^3.4.5"
   },
   "dependencies": {
-    "get-stdin": "^7.0.0"
+    "curtiz-utils": "git+https://github.com/fasiha/curtiz-utils.git",
+    "get-stdin": "^7.0.0",
+    "jmdict-furigana-node": "git+https://github.com/fasiha/jmdict-furigana-node.git"
   },
   "repository": "github:fasiha/curtiz-japanese-nlp"
 }

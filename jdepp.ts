@@ -1,4 +1,4 @@
-import {partitionBy} from './utils';
+import {partitionBy} from 'curtiz-utils';
 const spawn = require('child_process').spawn;
 export function invokeJdepp(line: string): Promise<string> {
   return new Promise((resolve, reject) => {

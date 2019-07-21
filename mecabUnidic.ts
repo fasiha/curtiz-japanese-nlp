@@ -1,5 +1,5 @@
 const spawn = require('child_process').spawn;
-import {partitionBy} from './utils';
+import {partitionBy} from 'curtiz-utils';
 
 const partOfSpeechKeys = [
   "代名詞",

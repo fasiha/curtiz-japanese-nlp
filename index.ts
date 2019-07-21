@@ -2,7 +2,10 @@
 import {addJdepp} from './jdepp';
 import {kata2hira} from './kana';
 import {goodMorphemePredicate, invokeMecab, maybeMorphemesToMorphemes, Morpheme, parseMecab} from './mecabUnidic';
-import {enumerate, filterRight, flatten, hasKanji, partitionBy, takeWhile} from './utils';
+import {enumerate, filterRight, flatten, hasKanji, partitionBy, takeWhile, zip} from 'curtiz-utils';
+import {Entry, Ruby, Furigana, setup} from 'jmdict-furigana-node';
+
+const JmdictFurigana = setup();
 
 async function parse(sentence: string): Promise<{morphemes: Morpheme[]; bunsetsus: Morpheme[][];}> {
   let rawMecab = await invokeMecab(sentence);
@@ -48,6 +51,9 @@ const flashableMorpheme = (m: Morpheme) => {
   }
   return false;
 };
+function morphemeToReading(m: Morpheme) {
+  return hasKanji(m.literal) ? kata2hira(m.literal === m.lemma ? m.lemmaReading : m.pronunciation) : m.literal;
+}
 export async function parseHeaderBlock(block: string[]): Promise<string[]> {
   const atHeaderRe = /^#+\s+@\s+/;
   const match = block[0].match(atHeaderRe);
@@ -64,9 +70,7 @@ export async function parseHeaderBlock(block: string[]): Promise<string[]> {
       if (!hasResponse) {
         response = kata2hira(flatten(parsed.bunsetsus)
                                  .filter(m => m.partOfSpeech[0] !== 'supplementary_symbol')
-                                 .map(m => hasKanji(m.literal)
-                                               ? kata2hira(m.literal === m.lemma ? m.lemmaReading : m.pronunciation)
-                                               : m.literal)
+                                 .map(morphemeToReading)
                                  .join(''));
         block[0] = block[0] + ' @ ' + response;
       }
@@ -98,11 +102,80 @@ export async function parseHeaderBlock(block: string[]): Promise<string[]> {
 
         // remove @pleaseParse
         block = block.filter(s => !s.startsWith(PLEASE_PARSE_BLOCK));
+
+        // add furigana line
+        if (hasKanji(prompt)) {
+          const furigana: Furigana[][] = await Promise.all(parsed.morphemes.map(async m => {
+            const {lemma, lemmaReading, literal, pronunciation} = m;
+            if (hasKanji(literal)) {
+              const {textToEntry, readingToEntry} = await JmdictFurigana;
+
+              const literalHit = search(textToEntry, literal, 'reading', pronunciation);
+              if (literalHit) { return literalHit.furigana; }
+              const pronunciationHit = search(readingToEntry, pronunciation, 'text', literal);
+              if (pronunciationHit) { return pronunciationHit.furigana; }
+
+              const lemmaHit = search(textToEntry, lemma, 'reading', lemmaReading);
+              if (lemmaHit) {
+                const furiganaDict: Map<string, string> = new Map();
+                for (const f of lemmaHit.furigana) {
+                  if (typeof f === 'string') { continue; }
+                  furiganaDict.set(f.ruby, f.rt);
+                }
+
+                const chars = literal.split('');
+                let kanji = chars.filter(hasKanji);
+                const annotatedChars: Furigana[] = chars.slice();
+
+                // start from all kanji characters in a string, see if that's in furiganaDict, if not, chop last
+                while (kanji.length) {
+                  const hit = triu(kanji).find(ks => furiganaDict.has(ks.join('')));
+                  if (hit) {
+                    const hitstr = hit.join('');
+                    const idx = literal.indexOf(hitstr);
+                    annotatedChars[idx] = {ruby: hitstr, rt: furiganaDict.get(hitstr) || hitstr};
+                    for (let i = idx + 1; i < idx + hitstr.length; i++) { annotatedChars[i] = ''; }
+                    kanji = kanji.slice(hitstr.length);
+                    continue;
+                  }
+                  break;
+                }
+                return annotatedChars;
+              }
+              // const lemmaReadingHit = search(readingToEntry, lemmaReading, 'text', lemma);
+              // if (lemmaReadingHit) { return lemmaReadingHit.furigana; }
+            }
+            return [hasKanji(literal) ? {ruby: literal, rt: morphemeToReading(m)} : literal];
+          }));
+
+          block.splice(1, 0, `- @furigana ${furigana.map(furiganaToString).join('')}`);
+        }
       }
     }
   }
   return block;
 }
+
+function triu<T>(arr: T[]): T[][] {
+  const ret: T[][] = [];
+  for (let i = arr.length; i > 0; --i) { ret.push(arr.slice(0, i)); }
+  return ret;
+}
+function furiganaToString(fs: Furigana[]) {
+  // const pad = (s: string) => s.length === 1 ? s : `{${s}}`;
+  return fs.map(f => typeof f === 'string' ? f : `{${f.ruby}}^{${f.rt}}`).join('');
+}
+
+function search(map: Map<string, Entry[]>, first: string, sub: 'reading'|'text', second: string): Entry|undefined {
+  const hit = map.get(first);
+  if (hit) {
+    if (hit.length === 1) { return hit[0]; }
+    const subhit = hit.find(e => kata2hira(e[sub]) === kata2hira(second));
+    if (subhit) { return subhit; }
+    console.error(`found hit for ${first} but not ${second}`, {hit});
+  }
+}
+
 /**
  * Ensure needle is found in haystack only once
  * @param haystack big string
@@ -142,8 +215,6 @@ function generateContextClozed(left: string, cloze: string, right: string): stri
 function identifyFillInBlanks(bunsetsus: Morpheme[][]) {
   // Find clozes: particles and conjugated verb/adjective phrases
   let literalClozes: Map<string, Morpheme[]> = new Map([]);
-  const particlePredicate = (p: Morpheme) => p.partOfSpeech[0].startsWith('particle') && p.partOfSpeech.length > 1 &&
-                                             !p.partOfSpeech[1].startsWith('phrase_final');
   for (let [bidx, bunsetsu] of enumerate(bunsetsus)) {
     let first = bunsetsu[0];
     if (!first) { continue; }
@@ -161,6 +232,8 @@ function identifyFillInBlanks(bunsetsus: Morpheme[][]) {
       }
     }
     // only add particles if they're NOT inside conjugated phrases
+    const particlePredicate = (p: Morpheme) => p.partOfSpeech[0].startsWith('particle') && p.partOfSpeech.length > 1 &&
+                                               !p.partOfSpeech[1].startsWith('phrase_final');
     if (searchForParticles) {
       for (let [pidx, particle] of enumerate(bunsetsu)) {
         if (particlePredicate(particle)) {
@@ -181,7 +254,8 @@ function identifyFillInBlanks(bunsetsus: Morpheme[][]) {
       if (hasKanji(bunsetsuToString(bunsetsu))) {
         acceptable.push(kata2hira(bunsetsu.map(m => m.pronunciation).join('')))
       }
-      bullets.push('- @fill ' + acceptable.join(' @ '));
+      bullets.push('- @fill ' + acceptable.join(' @ ') +
+                   `    @pos ${bunsetsu.map(m => m.partOfSpeech.join('-')).join('/')}`);
     }
   }
   return bullets;
