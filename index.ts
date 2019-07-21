@@ -46,7 +46,7 @@ const flashableMorpheme = (m: Morpheme) => {
   if (hasKanji(m.literal) && !pos.endsWith('numeral')) { return true; }
   if (pos.endsWith('numeral')) { return false; }
   if (pos.startsWith('verb-general') || pos.startsWith('noun') || pos.startsWith('pronoun') ||
-      pos.startsWith('adjective') || pos.startsWith('adverb')) {
+      pos.startsWith('adjectiv') || pos.startsWith('adverb')) {
     return true;
   }
   return false;
