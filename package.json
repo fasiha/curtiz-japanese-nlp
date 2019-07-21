@@ -8,7 +8,7 @@
   },
   "typings": "index.ts",
   "scripts": {
-    "test": "tape test*.js",
+    "test": "tape tests/test*.js",
     "build": "tsc -p ."
   },
   "keywords": [

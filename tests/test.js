@@ -1,11 +1,12 @@
-const curtiz = require('./index');
+const curtiz = require('../index');
 const test = require('tape');
 
 test('reading generation', async t => {
   const block = `# @ 豚さん`.split('\n');
   const parsed = await curtiz.parseHeaderBlock(block);
-  t.is(parsed.length, 1);
+  t.is(parsed.length, 2);
   t.is(parsed[0], '# @ 豚さん @ ぶたさん');
+  t.ok(parsed[1].startsWith('- @furigana '));
   t.end();
 });
 
@@ -14,9 +15,10 @@ test('pleaseParse, make flashcard', async t => {
 - @pleaseParse`.split('\n');
   const parsed = await curtiz.parseHeaderBlock(block);
   t.ok(parsed.every(s => !s.includes('pleaseParse')));
-  t.is(parsed.length, 2);
+  t.is(parsed.length, 3);
   t.is(parsed[0], '# @ 豚さん @ ぶたさん');
-  t.ok(parsed[1].startsWith(`- @ 豚 @ ぶた`));
+  t.ok(parsed[1].startsWith(`- @furigana `));
+  t.ok(parsed[2].startsWith(`- @ 豚 @ ぶた`));
   t.end();
 });
 
