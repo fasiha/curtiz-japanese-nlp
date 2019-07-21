@@ -361,14 +361,16 @@ if (require.main === module) {
   function formatRow(row: string[], width: number[]) {
     return `| ${width.map((n, i) => (row[i] || '') + ' '.repeat(n - eaw.length(row[i] || ''))).join(' | ')} |`;
   }
-  function printMarkdownTable(table: string[][], header: string[]) {
-    if (header && header.length !== table[0].length) { throw new Error('table and header have different lengths'); }
+  function printMarkdownTable(table: string[][], header: string[] = []) {
+    if (header.length && header.length !== table[0].length) {
+      throw new Error('table and header have different lengths');
+    }
     const cellLengths =
         table.concat([header]).filter(v => v.length).map(row => {return row.map(cell => eaw.length(cell))});
     let widths = Array.from(table[0], () => 0);
     for (const l of cellLengths) { widths = widths.map((curr, i) => Math.max(curr, l[i])); }
 
-    if (header) {
+    if (header.length) {
       console.log(formatRow(header, widths));
       console.log(formatRow(header.map((h, i) => '-'.repeat(widths[i])), widths))
     }
