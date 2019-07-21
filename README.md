@@ -91,7 +91,7 @@ Then in your JavaScript code, you may:
 ```js
 const curtiz = require('curtiz-japanese-nlp'); 
 ```
-In TypeScript or with ES5 modules, you may:
+In TypeScript or with ES2015 modules, you may:
 ```js
 import * as curtiz from 'curtiz-japanese-nlp';
 ```
