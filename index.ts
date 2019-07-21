@@ -40,6 +40,7 @@ export async function parseAllHeaderBlocks(blocks: string[][], concurrentLimit: 
 }
 
 const PLEASE_PARSE_BLOCK = '- @pleaseParse';
+const FURIGANA_BLOCK = '- @furigana';
 
 const flashableMorpheme = (m: Morpheme) => {
   const pos = m.partOfSpeech.join('-');
@@ -65,7 +66,8 @@ export async function parseHeaderBlock(block: string[]): Promise<string[]> {
     const hasResponse = !!response;
     const hasPleaseParse =
         takeWhile(block.slice(1), s => s.startsWith('- @')).some(s => s.startsWith(PLEASE_PARSE_BLOCK));
-    if (!hasResponse || hasPleaseParse) {
+    const hasFurigana = takeWhile(block.slice(1), s => s.startsWith('- @')).some(s => s.startsWith(FURIGANA_BLOCK));
+    if (!hasResponse || hasPleaseParse || !hasFurigana) {
       const parsed = await parse(line);
       if (!hasResponse) {
         response = kata2hira(flatten(parsed.bunsetsus)
@@ -102,7 +104,8 @@ export async function parseHeaderBlock(block: string[]): Promise<string[]> {
 
         // remove @pleaseParse
         block = block.filter(s => !s.startsWith(PLEASE_PARSE_BLOCK));
-
+      }
+      if (!hasFurigana) {
         // add furigana line
         if (hasKanji(prompt)) {
           const furigana: Furigana[][] = await Promise.all(parsed.morphemes.map(async m => {
@@ -148,7 +151,7 @@ export async function parseHeaderBlock(block: string[]): Promise<string[]> {
             return [hasKanji(literal) ? {ruby: literal, rt: morphemeToReading(m)} : literal];
           }));
 
-          block.splice(1, 0, `- @furigana ${furigana.map(furiganaToString).join('')}`);
+          block.splice(1, 0, `${FURIGANA_BLOCK} ${furigana.map(furiganaToString).join('')}`);
         }
       }
     }
@@ -279,6 +282,6 @@ if (require.main === module) {
     // Parse headers
     let content = await parseAllHeaderBlocks(blocks);
     // Print result
-    console.log(content.map(v => v.join('\n')).join('\n'));
+    process.stdout.write(content.map(v => v.join('\n')).join('\n'));
   })();
 }
