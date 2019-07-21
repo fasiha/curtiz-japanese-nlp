@@ -127,6 +127,33 @@ The first line slurps the contents of `README.md` and splits it into blocks at M
 The second line logs the entire annotated Markdown.
 
 ## Useful helpers
+
+### MecabUnidic
+Often it can be very helpful to inspect the output of MeCab-Unidic to understand what this module is doing. This library incldues a thin wrapper that translates Unidic parts-of-speech, conjugations, inflections, etc., into English (via tables [1](https://gist.github.com/masayu-a/e3eee0637c07d4019ec9), [2](https://gist.github.com/masayu-a/3e11168f9330e2d83a68), [3](https://gist.github.com/masayu-a/b3ce862336e47736e84f), published by GitHub user @masayu-a citing the work of Irena Srdanovic), and exposes a command-line interface: simply pipe multi-line input into `mecabUnidic.js`, for example `cat text | ./mecabUnidic.js` or equivalently `cat text | node mecabUnidic.js`. A simple example on the command-line:
+```shell
+cat <<EOF | ./mecabUnidic.js
+「ほら、
+あれが小学校だよ。」
+EOF
+```
+This will print out the following Markdown table:
+
+| Literal | Pronunciation | Lemma Reading | Lemma | Part of Speech                    | Inflection Type | Inflection         |
+| ------- | ------------- | ------------- | ----- | --------------------------------- | --------------- | ------------------ |
+| ほら    | ホラ          | ホラ          | ほら  | interjection-general              |                 |                    |
+| 、      |               |               | 、    | supplementary_symbol-comma        |                 |                    |
+|         |               |               |       |                                   |                 |                    |
+| あれ    | アレ          | アレ          | 彼れ  | pronoun                           |                 |                    |
+| が      | ガ            | ガ            | が    | particle-case                     |                 |                    |
+| 小      | ショー        | ショウ        | 小    | prefix                            |                 |                    |
+| 学校    | ガッコー      | ガッコウ      | 学校  | noun-common-general               |                 |                    |
+| だ      | ダ            | ダ            | だ    | auxiliary_verb                    | auxiliary-da    | conclusive-general |
+| よ      | ヨ            | ヨ            | よ    | particle-phrase_final             |                 |                    |
+| 。      |               |               | 。    | supplementary_symbol-period       |                 |                    |
+| 」      |               |               | 」    | supplementary_symbol-bracket_open |                 |                    |
+|         |               |               |       |                                   |                 |                    |
+
+
 ### Awk
 If you have a file containing just lines of text and you want to parse them all, this [Awk](https://developer.ibm.com/tutorials/l-awk1/) script can pre-process them to a format amenable for this tool:
 ```shell

@@ -1,5 +1,6 @@
+#!/usr/bin/env node
 const spawn = require('child_process').spawn;
-import {partitionBy} from 'curtiz-utils';
+import {partitionBy, flatten} from 'curtiz-utils';
 
 const partOfSpeechKeys = [
   "代名詞",
@@ -355,6 +356,25 @@ if (require.main === module) {
   const readFile = require('fs').readFile;
   const promisify = require('util').promisify;
   const getStdin = require('get-stdin');
+  const eaw: {length: (s: string) => number} = require('eastasianwidth');
+
+  function formatRow(row: string[], width: number[]) {
+    return `| ${width.map((n, i) => (row[i] || '') + ' '.repeat(n - eaw.length(row[i] || ''))).join(' | ')} |`;
+  }
+  function printMarkdownTable(table: string[][], header: string[]) {
+    if (header && header.length !== table[0].length) { throw new Error('table and header have different lengths'); }
+    const cellLengths =
+        table.concat([header]).filter(v => v.length).map(row => {return row.map(cell => eaw.length(cell))});
+    let widths = Array.from(table[0], () => 0);
+    for (const l of cellLengths) { widths = widths.map((curr, i) => Math.max(curr, l[i])); }
+
+    if (header) {
+      console.log(formatRow(header, widths));
+      console.log(formatRow(header.map((h, i) => '-'.repeat(widths[i])), widths))
+    }
+    for (const row of table) { console.log(formatRow(row, widths)); }
+  }
+
   (async function() {
     let text = '今日は　良い天気だ。\n\nたのしいですか。\n\n何できた？';
     if (process.argv.length <= 2) {
@@ -366,20 +386,12 @@ if (require.main === module) {
                  .replace(/\r/g, '');
     }
     const parsed = parseMecab(text, await invokeMecab(text.trim()));
-    for (const sentence of parsed) {
-      for (const morpheme of sentence) {
-        if (morpheme) {
-          console.log(ultraCompressMorpheme(morpheme));
-        } else {
-          console.log('---');
-        }
-      }
-    }
-    if (false) {
-      const formatter = (arr: MaybeMorpheme[][]) =>
-          arr.map(arr => '  [ ' + arr.map(x => JSON.stringify(x)).join(',\n    ')).join(' ],\n');
-      const ldjsonFormatter = (arr: MaybeMorpheme[][]) => arr.map(x => JSON.stringify(x)).join('\n');
-      console.log(ldjsonFormatter(parsed));
-    }
+    // Output
+    const table = flatten(parsed.map(s => s.map(m => {
+      return m ? [m.literal, m.pronunciation, m.lemmaReading, m.lemma, m.partOfSpeech.join(ELEMENTSEP),
+                (m.inflectionType || []).join(ELEMENTSEP), (m.inflection || []).join(ELEMENTSEP)] : [];
+    })));
+    printMarkdownTable(
+        table, 'Literal,Pronunciation,Lemma Reading,Lemma,Part of Speech,Inflection Type,Inflection'.split(','));
   })();
 }
