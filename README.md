@@ -129,7 +129,7 @@ The second line logs the entire annotated Markdown.
 ## Useful helpers
 
 ### MecabUnidic
-Often it can be very helpful to inspect the output of MeCab-Unidic to understand what this module is doing. This library incldues a thin wrapper that translates Unidic parts-of-speech, conjugations, inflections, etc., into English (via tables [1](https://gist.github.com/masayu-a/e3eee0637c07d4019ec9), [2](https://gist.github.com/masayu-a/3e11168f9330e2d83a68), [3](https://gist.github.com/masayu-a/b3ce862336e47736e84f), published by GitHub user @masayu-a citing the work of Irena Srdanovic), and exposes a command-line interface: simply pipe multi-line input into `mecabUnidic.js`, for example `cat text | ./mecabUnidic.js` or equivalently `cat text | node mecabUnidic.js`. A simple example on the command-line:
+Often it can be very helpful to inspect the output of MeCab-Unidic to understand what this module is doing. This library incldues a thin wrapper that translates Unidic parts-of-speech, conjugations, inflections, etc., into English (via tables [1](https://gist.github.com/masayu-a/e3eee0637c07d4019ec9), [2](https://gist.github.com/masayu-a/3e11168f9330e2d83a68), [3](https://gist.github.com/masayu-a/b3ce862336e47736e84f), published by GitHub user @masayu-a citing the work of Dr Irena Srdanovic), and exposes a command-line interface: simply pipe multi-line input into `mecabUnidic.js`, for example `cat text | ./mecabUnidic.js` or equivalently `cat text | node mecabUnidic.js`. A simple example on the command-line:
 ```shell
 cat <<EOF | ./mecabUnidic.js
 「ほら、
