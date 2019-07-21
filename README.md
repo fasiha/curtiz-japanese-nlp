@@ -64,6 +64,8 @@ It will add a reading to the header if none exists.
 
 It will add sub-quizzes (`@fill` and `@`) and furigana if there is a special bullet under the header: `- @pleaseParse`. Furigana comes from analyzing the excellent [JmdictFurigana](https://github.com/Doublevil/JmdictFurigana) project (which itself builds on the Jmdict dictionary project).
 
+***N.B.*** The first time this module is run, it will download and save the ~8 MB [JmdictFurigana](https://github.com/Doublevil/JmdictFurigana) database from GitHub and parse it into a ~25 MB JSON file, which might take several seconds. Subsequent runs of the module will read these files from the current directory and skip this step.
+
 ## Usage
 This package provides:
 1. a command-line utility that will consume an input file or standard input, and spit out the Markdown file annotated with readings and sub-quizzes; and
