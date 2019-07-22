@@ -2,8 +2,8 @@
 import {addJdepp} from './jdepp';
 import {kata2hira} from './kana';
 import {goodMorphemePredicate, invokeMecab, maybeMorphemesToMorphemes, Morpheme, parseMecab} from './mecabUnidic';
-import {enumerate, filterRight, flatten, hasKanji, partitionBy, takeWhile, zip} from 'curtiz-utils';
-import {Entry, Ruby, Furigana, setup} from 'jmdict-furigana-node';
+import {enumerate, filterRight, flatten, hasKanji, partitionBy, takeWhile} from 'curtiz-utils';
+import {Entry, furiganaToString, Furigana, setup} from 'jmdict-furigana-node';
 
 const JmdictFurigana = setup();
 
@@ -163,10 +163,6 @@ function triu<T>(arr: T[]): T[][] {
   const ret: T[][] = [];
   for (let i = arr.length; i > 0; --i) { ret.push(arr.slice(0, i)); }
   return ret;
-}
-function furiganaToString(fs: Furigana[]) {
-  // const pad = (s: string) => s.length === 1 ? s : `{${s}}`;
-  return fs.map(f => typeof f === 'string' ? f : `{${f.ruby}}^{${f.rt}}`).join('');
 }
 
 function search(map: Map<string, Entry[]>, first: string, sub: 'reading'|'text', second: string): Entry|undefined {
