@@ -19,6 +19,7 @@ test('pleaseParse, make flashcard', async t => {
   t.is(parsed[0], '# @ 豚さん @ ぶたさん');
   t.ok(parsed[1].startsWith(`- @furigana `));
   t.ok(parsed[2].startsWith(`- @ 豚 @ ぶた`));
+  t.ok(parsed[2].includes('@furigana {豚}^{ぶた}'));
   t.end();
 });
 

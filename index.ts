@@ -55,6 +55,9 @@ const flashableMorpheme = (m: Morpheme) => {
 function morphemeToReading(m: Morpheme) {
   return hasKanji(m.literal) ? kata2hira(m.literal === m.lemma ? m.lemmaReading : m.pronunciation) : m.literal;
 }
+type Parsed = {
+  morphemes: Morpheme[]; bunsetsus: Morpheme[][];
+};
 export async function parseHeaderBlock(block: string[]): Promise<string[]> {
   const atHeaderRe = /^#+\s+@\s+/;
   const match = block[0].match(atHeaderRe);
@@ -68,7 +71,7 @@ export async function parseHeaderBlock(block: string[]): Promise<string[]> {
         takeWhile(block.slice(1), s => s.startsWith('- @')).some(s => s.startsWith(PLEASE_PARSE_BLOCK));
     const hasFurigana = takeWhile(block.slice(1), s => s.startsWith('- @')).some(s => s.startsWith(FURIGANA_BLOCK));
     if (!hasResponse || hasPleaseParse || !hasFurigana) {
-      const parsed = await parse(line);
+      const parsed: Parsed = await parse(line);
       if (!hasResponse) {
         response = kata2hira(flatten(parsed.bunsetsus)
                                  .filter(m => m.partOfSpeech[0] !== 'supplementary_symbol')
@@ -94,6 +97,11 @@ export async function parseHeaderBlock(block: string[]): Promise<string[]> {
             } else {
               final = `- @ ${mprompt} @ ${mresponse}    @pos ${morpheme.partOfSpeech.join('-')} @omit ${cloze}`;
             }
+            if (hasKanji(mprompt)) {
+              const furigana = await parsedToFurigana([morpheme]);
+              final += ` @furigana ${furigana.map(furiganaToString).join('')}`
+            }
+
             flashBullets.push(final);
           }
         }
@@ -105,58 +113,61 @@ export async function parseHeaderBlock(block: string[]): Promise<string[]> {
         // remove @pleaseParse
         block = block.filter(s => !s.startsWith(PLEASE_PARSE_BLOCK));
       }
-      if (!hasFurigana) {
+      if (!hasFurigana && hasKanji(prompt)) {
         // add furigana line
-        if (hasKanji(prompt)) {
-          const furigana: Furigana[][] = await Promise.all(parsed.morphemes.map(async m => {
-            const {lemma, lemmaReading, literal, pronunciation} = m;
-            if (hasKanji(literal)) {
-              const {textToEntry, readingToEntry} = await JmdictFurigana;
-
-              const literalHit = search(textToEntry, literal, 'reading', pronunciation);
-              if (literalHit) { return literalHit.furigana; }
-              const pronunciationHit = search(readingToEntry, pronunciation, 'text', literal);
-              if (pronunciationHit) { return pronunciationHit.furigana; }
-
-              const lemmaHit = search(textToEntry, lemma, 'reading', lemmaReading);
-              if (lemmaHit) {
-                const furiganaDict: Map<string, string> = new Map();
-                for (const f of lemmaHit.furigana) {
-                  if (typeof f === 'string') { continue; }
-                  furiganaDict.set(f.ruby, f.rt);
-                }
-
-                const chars = literal.split('');
-                let kanji = chars.filter(hasKanji);
-                const annotatedChars: Furigana[] = chars.slice();
-
-                // start from all kanji characters in a string, see if that's in furiganaDict, if not, chop last
-                while (kanji.length) {
-                  const hit = triu(kanji).find(ks => furiganaDict.has(ks.join('')));
-                  if (hit) {
-                    const hitstr = hit.join('');
-                    const idx = literal.indexOf(hitstr);
-                    annotatedChars[idx] = {ruby: hitstr, rt: furiganaDict.get(hitstr) || hitstr};
-                    for (let i = idx + 1; i < idx + hitstr.length; i++) { annotatedChars[i] = ''; }
-                    kanji = kanji.slice(hitstr.length);
-                    continue;
-                  }
-                  break;
-                }
-                return annotatedChars;
-              }
-              // const lemmaReadingHit = search(readingToEntry, lemmaReading, 'text', lemma);
-              // if (lemmaReadingHit) { return lemmaReadingHit.furigana; }
-            }
-            return [hasKanji(literal) ? {ruby: literal, rt: morphemeToReading(m)} : literal];
-          }));
-
-          block.splice(1, 0, `${FURIGANA_BLOCK} ${furigana.map(furiganaToString).join('')}`);
-        }
+        const furigana = await parsedToFurigana(parsed.morphemes);
+        block.splice(1, 0, `${FURIGANA_BLOCK} ${furigana.map(furiganaToString).join('')}`);
       }
     }
   }
   return block;
+}
+
+async function parsedToFurigana(morphemes: Morpheme[]) {
+  const furigana: Furigana[][] = await Promise.all(morphemes.map(async m => {
+    const {lemma, lemmaReading, literal, pronunciation} = m;
+    if (hasKanji(literal)) {
+      const {textToEntry, readingToEntry} = await JmdictFurigana;
+
+      const literalHit = search(textToEntry, literal, 'reading', pronunciation);
+      if (literalHit) { return literalHit.furigana; }
+      const pronunciationHit = search(readingToEntry, pronunciation, 'text', literal);
+      if (pronunciationHit) { return pronunciationHit.furigana; }
+
+      const lemmaHit = search(textToEntry, lemma, 'reading', lemmaReading);
+      if (lemmaHit) {
+        const furiganaDict: Map<string, string> = new Map();
+        for (const f of lemmaHit.furigana) {
+          if (typeof f === 'string') { continue; }
+          furiganaDict.set(f.ruby, f.rt);
+        }
+
+        const chars = literal.split('');
+        let kanji = chars.filter(hasKanji);
+        const annotatedChars: Furigana[] = chars.slice();
+
+        // start from all kanji characters in a string, see if that's in furiganaDict, if not, chop last
+        while (kanji.length) {
+          const hit = triu(kanji).find(ks => furiganaDict.has(ks.join('')));
+          if (hit) {
+            const hitstr = hit.join('');
+            const idx = literal.indexOf(hitstr);
+            annotatedChars[idx] = {ruby: hitstr, rt: furiganaDict.get(hitstr) || hitstr};
+            for (let i = idx + 1; i < idx + hitstr.length; i++) { annotatedChars[i] = ''; }
+            kanji = kanji.slice(hitstr.length);
+            continue;
+          }
+          break;
+        }
+        return annotatedChars;
+      }
+      // const lemmaReadingHit = search(readingToEntry, lemmaReading, 'text', lemma);
+      // if (lemmaReadingHit) { return lemmaReadingHit.furigana; }
+    }
+    return [hasKanji(literal) ? {ruby: literal, rt: morphemeToReading(m)} : literal];
+  }));
+
+  return furigana;
 }
 
 function triu<T>(arr: T[]): T[][] {
