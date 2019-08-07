@@ -98,7 +98,7 @@ export async function parseHeaderBlock(block: string[]): Promise<string[]> {
               final = `- @ ${mprompt} @ ${mresponse}    @pos ${morpheme.partOfSpeech.join('-')} @omit ${cloze}`;
             }
             if (hasKanji(mprompt)) {
-              const furigana = await parsedToFurigana([morpheme]);
+              const furigana = await vocabToFurigana([morpheme]);
               final += ` @furigana ${furigana.map(furiganaToString).join('')}`
             }
 
@@ -123,7 +123,20 @@ export async function parseHeaderBlock(block: string[]): Promise<string[]> {
   return block;
 }
 
-async function parsedToFurigana(morphemes: Morpheme[]) {
+async function vocabToFurigana(morphemes: Morpheme[]): Promise<Furigana[][]> {
+  return Promise.all(morphemes.map(async m => {
+    const {lemma, lemmaReading} = m;
+    if (hasKanji(lemma)) {
+      const {textToEntry} = await JmdictFurigana;
+
+      const lemmaHit = search(textToEntry, lemma, 'reading', lemmaReading);
+      if (lemmaHit) { return lemmaHit.furigana; }
+    }
+    return [hasKanji(lemma) ? {ruby: lemma, rt: morphemeToReading(m)} : lemma];
+  }));
+}
+
+async function parsedToFurigana(morphemes: Morpheme[]): Promise<Furigana[][]> {
   const furigana: Furigana[][] = await Promise.all(morphemes.map(async m => {
     const {lemma, lemmaReading, literal, pronunciation} = m;
     if (hasKanji(literal)) {
