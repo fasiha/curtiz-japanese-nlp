@@ -84,9 +84,7 @@ export async function parseHeaderBlock(block: string[]): Promise<string[]> {
         let flashBullets: string[] = [];
         for (let [midx, morpheme] of enumerate(parsed.morphemes)) {
           if (flashableMorpheme(morpheme)) {
-            const mprompt = (morpheme.partOfSpeech[1] === 'proper') ? morpheme.literal : morpheme.lemma;
-            const mresponse = (morpheme.partOfSpeech[1] === 'proper') ? kata2hira(morpheme.pronunciation)
-                                                                      : kata2hira(morpheme.lemmaReading);
+            const {prompt: mprompt, response: mresponse} = morphemeToPromptResponse(morpheme);
 
             const left = parsed.morphemes.slice(0, midx).map(m => m.literal).join('');
             const right = parsed.morphemes.slice(midx + 1).map(m => m.literal).join('');
@@ -123,9 +121,16 @@ export async function parseHeaderBlock(block: string[]): Promise<string[]> {
   return block;
 }
 
+function morphemeToPromptResponse(morpheme: Morpheme) {
+  const prompt = (morpheme.partOfSpeech[1] === 'proper') ? morpheme.literal : morpheme.lemma;
+  const response =
+      (morpheme.partOfSpeech[1] === 'proper') ? kata2hira(morpheme.pronunciation) : kata2hira(morpheme.lemmaReading);
+  return {prompt, response};
+}
+
 async function vocabToFurigana(morphemes: Morpheme[]): Promise<Furigana[][]> {
   return Promise.all(morphemes.map(async m => {
-    const {lemma, lemmaReading} = m;
+    const {prompt: lemma, response: lemmaReading} = morphemeToPromptResponse(m);
     if (hasKanji(lemma)) {
       const {textToEntry} = await JmdictFurigana;
 
