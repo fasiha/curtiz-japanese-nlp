@@ -3,11 +3,11 @@ import {addJdepp} from './jdepp';
 import {kata2hira} from './kana';
 import {goodMorphemePredicate, invokeMecab, maybeMorphemesToMorphemes, Morpheme, parseMecab} from './mecabUnidic';
 import {enumerate, filterRight, flatten, hasKanji, partitionBy, takeWhile} from 'curtiz-utils';
-import {Entry, furiganaToString, Furigana, setup} from 'jmdict-furigana-node';
+import {Entry, furiganaToString, Furigana, setup, stringToFurigana} from 'jmdict-furigana-node';
 
 const JmdictFurigana = setup();
 
-async function parse(sentence: string): Promise<{morphemes: Morpheme[]; bunsetsus: Morpheme[][];}> {
+export async function parse(sentence: string): Promise<{morphemes: Morpheme[]; bunsetsus: Morpheme[][];}> {
   let rawMecab = await invokeMecab(sentence);
   let morphemes = maybeMorphemesToMorphemes(parseMecab(sentence, rawMecab)[0].filter(o => !!o));
   let bunsetsus = await addJdepp(rawMecab, morphemes);
@@ -24,13 +24,14 @@ export function splitAtHeaders(text: string): string[][] {
 export async function parseAllHeaderBlocks(blocks: string[][], concurrentLimit: number = 8) {
   let ret: string[][] = [];
   let promises: Promise<string[]>[] = [];
+  const seen: Map<string, Seen> = new Map([]);
   for (let o of blocks) {
     if (promises.length >= concurrentLimit) {
       const thisRet = await Promise.all(promises);
       for (const o of thisRet) { ret.push(o); }
       promises = [];
     }
-    promises.push(parseHeaderBlock(o));
+    promises.push(parseHeaderBlock(o, seen));
   }
   if (promises.length > 0) {
     const thisRet = await Promise.all(promises);
@@ -58,46 +59,62 @@ function morphemeToReading(m: Morpheme) {
 type Parsed = {
   morphemes: Morpheme[]; bunsetsus: Morpheme[][];
 };
-export async function parseHeaderBlock(block: string[]): Promise<string[]> {
+type Seen = {
+  furigana: Furigana[][]; reading: string;
+};
+export async function parseHeaderBlock(block: string[], seen: Map<string, Seen> = new Map([])): Promise<string[]> {
   const atHeaderRe = /^#+\s+@\s+/;
   const match = block[0].match(atHeaderRe);
   if (match) {
-    const line = block[0].slice(match[0].length);
-    let [prompt, response] = line.split('@').map(s => s.trim());
+    const line = block[0].slice(match[0].length); // minus the first @
+
+    let [prompt, ...responses] = line.split('@').map(s => s.trim());
+    const prefix: string[] = [];
 
     // process line and block.
-    const hasResponse = !!response;
+    const hasResponse = responses.length > 0;
     const hasPleaseParse =
         takeWhile(block.slice(1), s => s.startsWith('- @')).some(s => s.startsWith(PLEASE_PARSE_BLOCK));
     const hasFurigana = takeWhile(block.slice(1), s => s.startsWith('- @')).some(s => s.startsWith(FURIGANA_BLOCK));
     if (!hasResponse || hasPleaseParse || !hasFurigana) {
       const parsed: Parsed = await parse(line);
       if (!hasResponse) {
-        response = kata2hira(flatten(parsed.bunsetsus)
-                                 .filter(m => m.partOfSpeech[0] !== 'supplementary_symbol')
-                                 .map(morphemeToReading)
-                                 .join(''));
-        block[0] = block[0] + ' @ ' + response;
+        responses = [kata2hira(flatten(parsed.bunsetsus)
+                                   .filter(m => m.partOfSpeech[0] !== 'supplementary_symbol')
+                                   .map(m => {
+                                     const hit = seen.get(m.literal);
+                                     return hit ? hit.reading : morphemeToReading(m);
+                                   })
+                                   .join(''))];
+        block[0] = block[0] + ' @ ' + responses[0];
       }
       if (hasPleaseParse) {
-        // add @flash lines
+        // add @ vocabulary lines:
         let flashBullets: string[] = [];
         for (let [midx, morpheme] of enumerate(parsed.morphemes)) {
           if (flashableMorpheme(morpheme)) {
-            const {prompt: mprompt, response: mresponse} = morphemeToPromptResponse(morpheme);
+            let {prompt: mprompt, response: mresponse} = morphemeToPromptResponse(morpheme);
+
+            let furigana: Furigana[][] = [];
+            if (hasKanji(mprompt)) { furigana = await vocabToFurigana([morpheme]); }
+
+            const hit = seen.get(mprompt);
+            if (!hit) {
+              prefix.push(match[0] + `${mprompt} @ ${mresponse}`);
+              prefix.push(FURIGANA_BLOCK + ' ' + furigana.map(furiganaToString).join(''));
+              seen.set(mprompt, {furigana, reading: mresponse});
+            } else {
+              mresponse = hit.reading;
+            }
 
             const left = parsed.morphemes.slice(0, midx).map(m => m.literal).join('');
             const right = parsed.morphemes.slice(midx + 1).map(m => m.literal).join('');
             let cloze = generateContextClozed(left, morpheme.literal, right);
             let final = '';
             if (mprompt === morpheme.literal && appearsExactlyOnce(prompt, morpheme.literal)) {
-              final = `- @ ${mprompt} @ ${mresponse}    @pos ${morpheme.partOfSpeech.join('-')}`;
+              final = `- @ ${mprompt} @ ${mresponse}`;
             } else {
-              final = `- @ ${mprompt} @ ${mresponse}    @pos ${morpheme.partOfSpeech.join('-')} @omit ${cloze}`;
-            }
-            if (hasKanji(mprompt)) {
-              const furigana = await vocabToFurigana([morpheme]);
-              final += ` @furigana ${furigana.map(furiganaToString).join('')}`
+              final = `- @ ${mprompt} @ ${mresponse} @omit ${cloze}`;
             }
 
             flashBullets.push(final);
@@ -111,12 +128,31 @@ export async function parseHeaderBlock(block: string[]): Promise<string[]> {
         // remove @pleaseParse
         block = block.filter(s => !s.startsWith(PLEASE_PARSE_BLOCK));
       }
-      if (!hasFurigana && hasKanji(prompt)) {
-        // add furigana line
-        const furigana = await parsedToFurigana(parsed.morphemes);
-        block.splice(1, 0, `${FURIGANA_BLOCK} ${furigana.map(furiganaToString).join('')}`);
+      if (!hasFurigana) {
+        if (hasKanji(prompt)) {
+          // add furigana line
+          const furigana = await parsedToFurigana(parsed.morphemes, seen);
+          block.splice(1, 0, `${FURIGANA_BLOCK} ${furigana.map(furiganaToString).join('')}`);
+          seen.set(prompt, {furigana, reading: responses[0]});
+        } else {
+          seen.set(prompt, {furigana: [[responses[0]]], reading: responses[0]});
+        }
+      } else {
+        const furiganaBullets = block.filter(s => s.startsWith(FURIGANA_BLOCK));
+        if (furiganaBullets.length) {
+          const furigana = stringToFurigana(furiganaBullets[0].slice(FURIGANA_BLOCK.length))
+          seen.set(prompt, {furigana: [furigana], reading: responses[0]});
+        }
+      }
+    } else {
+      // FIXME DRY same as above
+      const furiganaBullets = block.filter(s => s.startsWith(FURIGANA_BLOCK));
+      if (furiganaBullets.length) {
+        const furigana = stringToFurigana(furiganaBullets[0].slice(FURIGANA_BLOCK.length))
+        seen.set(prompt, {furigana: [furigana], reading: responses[0]});
       }
     }
+    block = prefix.concat(block);
   }
   return block;
 }
@@ -141,10 +177,13 @@ async function vocabToFurigana(morphemes: Morpheme[]): Promise<Furigana[][]> {
   }));
 }
 
-async function parsedToFurigana(morphemes: Morpheme[]): Promise<Furigana[][]> {
+async function parsedToFurigana(morphemes: Morpheme[], seen: Map<string, Seen>): Promise<Furigana[][]> {
   const furigana: Furigana[][] = await Promise.all(morphemes.map(async m => {
     const {lemma, lemmaReading, literal, pronunciation} = m;
     if (hasKanji(literal)) {
+      const hit = seen.get(literal);
+      if (hit) { return flatten(hit.furigana) || []; }
+
       const {textToEntry, readingToEntry} = await JmdictFurigana;
 
       const literalHit = search(textToEntry, literal, 'reading', pronunciation);
