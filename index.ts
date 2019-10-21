@@ -92,6 +92,7 @@ export async function parseHeaderBlock(block: string[], seen: Map<string, Seen> 
         // add @ vocabulary lines:
         let flashBullets: string[] = [];
         for (let [midx, morpheme] of enumerate(parsed.morphemes)) {
+          if (parsed.morphemes.length === 1) { break; }
           if (flashableMorpheme(morpheme)) {
             let {prompt: mprompt, response: mresponse} = morphemeToPromptResponse(morpheme);
 

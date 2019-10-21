@@ -70,4 +70,14 @@ test('reusing earlier definitions', async t => {
   t.ok(parsed[2].some(s => s.includes('湯婆婆 @ ゆばあば')));
 
   t.end();
-})
+});
+
+test('Dont repeat single-morpheme sentences as new flashcards', async t => {
+  const text = `#### @ 列車
+- @pleaseParse`;
+  const blocks = curtiz.splitAtHeaders(text);
+  const parsed = await curtiz.parseAllHeaderBlocks(blocks);
+  t.equal(parsed.length, 1);
+  t.equal(parsed[0].length, 2);
+  t.end();
+});
