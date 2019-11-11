@@ -72,13 +72,13 @@ export async function parseHeaderBlock(block: string[], seen: Map<string, Seen> 
     const prefix: string[] = [];
 
     // process line and block.
-    const hasResponse = responses.length > 0;
+    const needsResponse = responses.length === 1 && responses[0].length == 0;
     const hasPleaseParse =
         takeWhile(block.slice(1), s => s.startsWith('- @')).some(s => s.startsWith(PLEASE_PARSE_BLOCK));
     const hasFurigana = takeWhile(block.slice(1), s => s.startsWith('- @')).some(s => s.startsWith(FURIGANA_BLOCK));
-    if (!hasResponse || hasPleaseParse || !hasFurigana) {
+    if (needsResponse || hasPleaseParse || !hasFurigana) {
       const parsed: Parsed = await parse(line);
-      if (!hasResponse) {
+      if (needsResponse) {
         responses = [kata2hira(flatten(parsed.bunsetsus)
                                    .filter(m => m.partOfSpeech[0] !== 'supplementary_symbol')
                                    .map(m => {
@@ -86,7 +86,7 @@ export async function parseHeaderBlock(block: string[], seen: Map<string, Seen> 
                                      return hit ? hit.reading : morphemeToReading(m);
                                    })
                                    .join(''))];
-        block[0] = block[0] + ' @ ' + responses[0];
+        block[0] = block[0] + (block[0].endsWith(' ') ? '' : ' ') + responses[0];
       }
       if (hasPleaseParse) {
         // add @ vocabulary lines:

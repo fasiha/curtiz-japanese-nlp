@@ -2,7 +2,7 @@ const curtiz = require('../index');
 const test = require('tape');
 const p = x => console.dir(x, {depth: null});
 test('reading generation', async t => {
-  const block = `# @ 豚さん`.split('\n');
+  const block = `# @ 豚さん @ `.split('\n');
   const parsed = await curtiz.parseHeaderBlock(block);
   t.is(parsed.length, 2);
   t.is(parsed[0], '# @ 豚さん @ ぶたさん');
@@ -11,7 +11,7 @@ test('reading generation', async t => {
 });
 
 test('pleaseParse, make flashcard', async t => {
-  const block = `# @ 豚さん
+  const block = `# @ 豚さん @
 - @pleaseParse`.split('\n');
   const parsed = await curtiz.parseHeaderBlock(block);
   t.ok(parsed.every(s => !s.includes('pleaseParse')));
@@ -46,8 +46,8 @@ test('pleaseParse, add flashcards for kana words', async t => {
 test('reusing earlier definitions', async t => {
   const text = `## @ 湯婆婆 @ ゆばあば
 - @furigana {湯}^{ゆ}{婆}^{ばあ}{婆}^{ば}
-## @ 釜爺
-## @ 湯婆婆の息子
+## @ 釜爺 @
+## @ 湯婆婆の息子 @
 - @pleaseParse`;
   const blocks = curtiz.splitAtHeaders(text);
   const parsed = await curtiz.parseAllHeaderBlocks(blocks);
