@@ -21,7 +21,7 @@ export function splitAtHeaders(text: string): string[][] {
   return partitionBy(text.split('\n'), s => headerRe.test(s));
 }
 
-export async function parseAllHeaderBlocks(blocks: string[][], concurrentLimit: number = 8) {
+export async function parseAllHeaderBlocks(blocks: string[][], concurrentLimit: number = 1) {
   let ret: string[][] = [];
   let promises: Promise<string[]>[] = [];
   const seen: Map<string, Seen> = new Map([]);
@@ -47,8 +47,8 @@ const flashableMorpheme = (m: Morpheme) => {
   const pos = m.partOfSpeech.join('-');
   if (hasKanji(m.literal) && !pos.endsWith('numeral')) { return true; }
   if (pos.endsWith('numeral')) { return false; }
-  if (pos.startsWith('verb-general') || pos.startsWith('noun') || pos.startsWith('pronoun') ||
-      pos.startsWith('adjectiv') || pos.startsWith('adverb')) {
+  if (pos.startsWith('verb-') || pos.startsWith('noun') || pos.startsWith('pronoun') || pos.startsWith('adjectiv') ||
+      pos.startsWith('adverb')) {
     return true;
   }
   return false;
@@ -70,14 +70,13 @@ export async function parseHeaderBlock(block: string[], seen: Map<string, Seen> 
 
     let [prompt, ...responses] = line.split('@').map(s => s.trim());
     const prefix: string[] = [];
-
     // process line and block.
     const needsResponse = responses.length === 1 && responses[0].length == 0;
     const hasPleaseParse =
         takeWhile(block.slice(1), s => s.startsWith('- @')).some(s => s.startsWith(PLEASE_PARSE_BLOCK));
     const hasFurigana = takeWhile(block.slice(1), s => s.startsWith('- @')).some(s => s.startsWith(FURIGANA_BLOCK));
     if (needsResponse || hasPleaseParse || !hasFurigana) {
-      const parsed: Parsed = await parse(line);
+      const parsed: Parsed = await parse(prompt);
       if (needsResponse) {
         responses = [kata2hira(flatten(parsed.bunsetsus)
                                    .filter(m => m.partOfSpeech[0] !== 'supplementary_symbol')
@@ -147,9 +146,9 @@ export async function parseHeaderBlock(block: string[], seen: Map<string, Seen> 
       }
     } else {
       // FIXME DRY same as above
-      const furiganaBullets = block.filter(s => s.startsWith(FURIGANA_BLOCK));
-      if (furiganaBullets.length) {
-        const furigana = stringToFurigana(furiganaBullets[0].slice(FURIGANA_BLOCK.length))
+      const furiganaBullet = block.find(s => s.startsWith(FURIGANA_BLOCK));
+      if (furiganaBullet) {
+        const furigana = stringToFurigana(furiganaBullet.slice(FURIGANA_BLOCK.length))
         seen.set(prompt, {furigana: [furigana], reading: responses[0]});
       }
     }
@@ -159,9 +158,11 @@ export async function parseHeaderBlock(block: string[], seen: Map<string, Seen> 
 }
 
 function morphemeToPromptResponse(morpheme: Morpheme) {
-  const prompt = (morpheme.partOfSpeech[1] === 'proper') ? morpheme.literal : morpheme.lemma;
-  const response =
-      (morpheme.partOfSpeech[1] === 'proper') ? kata2hira(morpheme.pronunciation) : kata2hira(morpheme.lemmaReading);
+  // use lemma only when inflected, or when literal lacks kanji but lemma has them
+  const useLemma =
+      (morpheme.inflection && morpheme.inflection[0]) || (hasKanji(morpheme.lemma) && !hasKanji(morpheme.literal));
+  const prompt = useLemma ? morpheme.lemma : morpheme.literal;
+  const response = kata2hira(useLemma ? morpheme.lemmaReading : morpheme.pronunciation);
   return {prompt, response};
 }
 
@@ -288,7 +289,8 @@ function identifyFillInBlanks(bunsetsus: Morpheme[][]) {
     if (!first) { continue; }
     const pos0 = first.partOfSpeech[0];
     let searchForParticles = true;
-    if (bunsetsu.length > 1 && (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject'))) {
+    if (bunsetsus.length > 1 && bunsetsu.length > 1 &&
+        (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject'))) {
       let ignoreRight = filterRight(bunsetsu, m => !goodMorphemePredicate(m));
       let goodBunsetsu = ignoreRight.length === 0 ? bunsetsu : bunsetsu.slice(0, -ignoreRight.length);
       if (goodBunsetsu.length > 1) {

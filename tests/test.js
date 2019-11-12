@@ -6,7 +6,7 @@ test('reading generation', async t => {
   const parsed = await curtiz.parseHeaderBlock(block);
   t.is(parsed.length, 2);
   t.is(parsed[0], '# @ 豚さん @ ぶたさん');
-  t.ok(parsed[1].startsWith('- @furigana '));
+  t.is(parsed[1], '- @furigana {豚}^{ぶた}さん');
   t.end();
 });
 
@@ -51,7 +51,6 @@ test('reusing earlier definitions', async t => {
 - @pleaseParse`;
   const blocks = curtiz.splitAtHeaders(text);
   const parsed = await curtiz.parseAllHeaderBlocks(blocks);
-  // console.log(parsed);
   t.equal(parsed.length, 3);
   t.equal(parsed[0].length, 2);
   t.equal(parsed[1].length, 2);
