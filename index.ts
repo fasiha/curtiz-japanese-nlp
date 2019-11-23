@@ -102,6 +102,7 @@ export async function parseHeaderBlock(block: string[], seen: Map<string, Seen> 
             if (!hit) {
               prefix.push(match[0] + `${mprompt} @ ${mresponse}`);
               prefix.push(FURIGANA_BLOCK + ' ' + furigana.map(furiganaToString).join(''));
+              prefix.push(`(Auto-added via 『${prompt}』)`);
               seen.set(mprompt, {furigana, reading: mresponse});
             } else {
               mresponse = hit.reading;
@@ -235,13 +236,45 @@ function triu<T>(arr: T[]): T[][] {
   return ret;
 }
 
+const CHOUONPU_PREFIX_MAP = createChouonpuPrefixMap();
+const CHOUONPU = 'ー'; // https://en.wikipedia.org/wiki/Ch%C5%8Donpu
+function createChouonpuPrefixMap() {
+  const prefixes = 'あいういう';
+  const map: Map<string, string[]> = new Map();
+  `ぁあかがさざただなはばぱまゃやらゎわ
+ぃいきぎしじちぢにひびぴみり
+ぅうくぐすずっつづぬふぶぷむゅゆるゔ
+ぇえけげせぜてでねへべぺめれ
+ぉおこごそぞとどのほぼぽもょよろを`.split('\n')
+      .forEach((line, i) => line.split('').forEach(s => map.set(s, [s + prefixes[i]])));
+  return map;
+}
+
+function findAlternativeChouonpu(katakana: string): string[] {
+  const hits = [katakana];
+  for (let i = 1; i < katakana.length; i++) {
+    if (katakana[i] === CHOUONPU) {
+      const replacements = CHOUONPU_PREFIX_MAP.get(katakana[i - 1]);
+      if (replacements) {
+        const prefix = katakana.slice(0, i - 1);
+        const postfix = katakana.slice(i + 1);
+        hits.push(...replacements.map(replacer => prefix + replacer + postfix));
+      }
+    }
+  }
+  return hits;
+}
 function search(map: Map<string, Entry[]>, first: string, sub: 'reading'|'text', second: string): Entry|undefined {
   const hit = map.get(first);
   if (hit) {
     if (hit.length === 1) { return hit[0]; }
-    const subhit = hit.find(e => kata2hira(e[sub]) === kata2hira(second));
+    const possibleSeconds = findAlternativeChouonpu(kata2hira(second));
+    const subhit = hit.find(e => {
+      const dict = kata2hira(e[sub]);
+      return possibleSeconds.some(second => second === dict);
+    });
     if (subhit) { return subhit; }
-    console.error(`found hit for ${first} but not ${second}`, {hit});
+    console.error(`found hit for ${first} but not ${second}`, {hit, possibleSeconds});
   }
 }
 
