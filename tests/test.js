@@ -15,12 +15,13 @@ test('pleaseParse, make flashcard', async t => {
 - @pleaseParse`.split('\n');
   const parsed = await curtiz.parseHeaderBlock(block);
   t.ok(parsed.every(s => !s.includes('pleaseParse')));
-  t.is(parsed.length, 3 + 2);
+  t.is(parsed.length, 3 + 3);
   t.is(parsed[0], '# @ 豚 @ ぶた');
   t.is(parsed[1], '- @furigana {豚}^{ぶた}');
-  t.is(parsed[2], '# @ 豚さん @ ぶたさん');
-  t.ok(parsed[3].startsWith(`- @furigana `));
-  t.ok(parsed[4].startsWith(`- @ 豚 @ ぶた`));
+  t.ok(parsed[2].startsWith('(Auto-added via'));
+  t.is(parsed[3], '# @ 豚さん @ ぶたさん');
+  t.ok(parsed[4].startsWith(`- @furigana `));
+  t.ok(parsed[5].startsWith(`- @ 豚 @ ぶた`));
   t.end();
 });
 
@@ -54,7 +55,7 @@ test('reusing earlier definitions', async t => {
   t.equal(parsed.length, 3);
   t.equal(parsed[0].length, 2);
   t.equal(parsed[1].length, 2);
-  t.equal(parsed[2].length, 2 + 5);
+  t.equal(parsed[2].length, 2 + 6);
 
   t.ok(parsed[1][0].includes('かまじい'));
   t.ok(parsed[1][1].includes('@furigana'));
@@ -64,8 +65,10 @@ test('reusing earlier definitions', async t => {
   t.ok(parsed[2][1].includes('@furigana'));
   t.ok(parsed[2][1].includes('{息子}^{むすこ}'));
 
-  t.ok(parsed[2][2].includes('ゆばあばのむすこ'));
-  t.ok(parsed[2][3].includes('{湯}^{ゆ}{婆}^{ばあ}{婆}^{ば}'));
+  t.ok(parsed[2][2].startsWith('(Auto-added via'));
+
+  t.ok(parsed[2][3].includes('ゆばあばのむすこ'));
+  t.ok(parsed[2][4].includes('{湯}^{ゆ}{婆}^{ばあ}{婆}^{ば}'));
   t.ok(parsed[2].some(s => s.includes('湯婆婆 @ ゆばあば')));
 
   t.end();
