@@ -164,6 +164,12 @@ function morphemeToPromptResponse(morpheme: Morpheme) {
       (morpheme.inflection && morpheme.inflection[0]) || (hasKanji(morpheme.lemma) && !hasKanji(morpheme.literal));
   const prompt = useLemma ? morpheme.lemma : morpheme.literal;
   const response = kata2hira(useLemma ? morpheme.lemmaReading : morpheme.pronunciation);
+  {
+    const lemmaAnyway = kata2hira(morpheme.lemmaReading);
+    if (!useLemma && response.includes(CHOUONPU) && findAlternativeChouonpu(response).find(s => s === lemmaAnyway)) {
+      return {prompt, response: kata2hira(morpheme.lemmaReading)};
+    }
+  }
   return {prompt, response};
 }
 
@@ -240,25 +246,25 @@ const CHOUONPU_PREFIX_MAP = createChouonpuPrefixMap();
 const CHOUONPU = 'ー'; // https://en.wikipedia.org/wiki/Ch%C5%8Donpu
 function createChouonpuPrefixMap() {
   const prefixes = 'あいういう';
-  const map: Map<string, string[]> = new Map();
+  const map: Map<string, string> = new Map();
   `ぁあかがさざただなはばぱまゃやらゎわ
 ぃいきぎしじちぢにひびぴみり
 ぅうくぐすずっつづぬふぶぷむゅゆるゔ
 ぇえけげせぜてでねへべぺめれ
 ぉおこごそぞとどのほぼぽもょよろを`.split('\n')
-      .forEach((line, i) => line.split('').forEach(s => map.set(s, [s + prefixes[i]])));
+      .forEach((line, i) => line.split('').forEach(s => map.set(s, s + prefixes[i])));
   return map;
 }
 
-function findAlternativeChouonpu(katakana: string): string[] {
-  const hits = [katakana];
-  for (let i = 1; i < katakana.length; i++) {
-    if (katakana[i] === CHOUONPU) {
-      const replacements = CHOUONPU_PREFIX_MAP.get(katakana[i - 1]);
-      if (replacements) {
-        const prefix = katakana.slice(0, i - 1);
-        const postfix = katakana.slice(i + 1);
-        hits.push(...replacements.map(replacer => prefix + replacer + postfix));
+function findAlternativeChouonpu(hiragana: string): string[] {
+  const hits = [hiragana];
+  for (let i = 1; i < hiragana.length; i++) {
+    if (hiragana[i] === CHOUONPU) {
+      const replacement = CHOUONPU_PREFIX_MAP.get(hiragana[i - 1]);
+      if (replacement) {
+        const prefix = hiragana.slice(0, i - 1);
+        const postfix = hiragana.slice(i + 1);
+        hits.push(prefix + replacement + postfix);
       }
     }
   }

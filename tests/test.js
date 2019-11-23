@@ -83,3 +83,11 @@ test('Dont repeat single-morpheme sentences as new flashcards', async t => {
   t.equal(parsed[0].length, 2);
   t.end();
 });
+
+test('test chouonpu is not emitted', async t => {
+  const text = `# @ 一年生
+- @pleaseParse`.split('\n');
+  const parsed = await curtiz.parseHeaderBlock(text);
+  t.ok(parsed.every(line => !line.includes('せー')));
+  t.end();
+})
