@@ -53,8 +53,12 @@ const flashableMorpheme = (m: Morpheme) => {
   }
   return false;
 };
-function morphemeToReading(m: Morpheme) {
-  return hasKanji(m.literal) ? kata2hira(m.literal === m.lemma ? m.lemmaReading : m.pronunciation) : m.literal;
+function morphemeToReading(m: Morpheme): string {
+  if (!hasKanji(m.literal)) { return m.literal; }
+  const ret = kata2hira(m.literal === m.lemma ? m.lemmaReading : m.pronunciation);
+  if (!ret.includes(CHOUONPU)) { return ret; }
+  const alts = findAlternativeChouonpu(ret);
+  return alts[1] || ret;
 }
 type Parsed = {
   morphemes: Morpheme[]; bunsetsus: Morpheme[][];
