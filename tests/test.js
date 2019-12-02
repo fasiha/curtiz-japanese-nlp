@@ -85,9 +85,25 @@ test('Dont repeat single-morpheme sentences as new flashcards', async t => {
 });
 
 test('test chouonpu is not emitted', async t => {
-  const text = `# @ 一年生
+  const text = `# @ 一年生 @
 - @pleaseParse`.split('\n');
   const parsed = await curtiz.parseHeaderBlock(text);
   t.ok(parsed.every(line => !line.includes('せー')));
+  t.end();
+})
+
+test('chouonpu not in furigana', async t => {
+  const text = `# @ 湯婆婆 @
+- @pleaseParse`.split('\n');
+  const parsed = await curtiz.parseHeaderBlock(text);
+  t.ok(parsed.every(line => !line.includes('ー')));
+  t.end();
+});
+
+test('chouonpu not in morpheme reading', async t => {
+  const text = `# @ 大きな山 @
+- @pleaseParse`.split('\n');
+  const parsed = await curtiz.parseHeaderBlock(text);
+  t.ok(parsed.every(line => !line.includes('ー')));
   t.end();
 })

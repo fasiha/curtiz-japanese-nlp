@@ -66,6 +66,13 @@ type Parsed = {
 type Seen = {
   furigana: Furigana[][]; reading: string;
 };
+
+// At each morpheme boundary, search JMDict for the longest matches
+export async function parsedToVocab(parsed: Parsed) {
+  const {textToEntry, readingToEntry} = await JmdictFurigana;
+  for (const [midx, morpheme] of parsed.morphemes.entries()) {}
+}
+
 export async function parseHeaderBlock(block: string[], seen: Map<string, Seen> = new Map([])): Promise<string[]> {
   const atHeaderRe = /^#+\s+@\s+/;
   const match = block[0].match(atHeaderRe);
@@ -162,6 +169,22 @@ export async function parseHeaderBlock(block: string[], seen: Map<string, Seen> 
   return block;
 }
 
+// returns true if pronunciation オーキナ vs lemmaReading オオキナ, i.e., if all non-chouonpu chars are same
+function pronunciationReadingEqualChouonpu(m: Morpheme): boolean {
+  if (m.pronunciation === m.lemmaReading) { return true; }
+  if (m.pronunciation.length === m.lemmaReading.length && m.pronunciation.includes(CHOUONPU)) {
+    const ps = m.pronunciation.split('');
+    const rs = m.lemmaReading.split('');
+    for (const [i, p] of enumerate(ps)) {
+      if (p !== CHOUONPU) {
+        if (p !== rs[i]) { return false; }
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
 function morphemeToPromptResponse(morpheme: Morpheme) {
   // use lemma only when inflected, or when literal lacks kanji but lemma has them
   const useLemma =
@@ -170,7 +193,9 @@ function morphemeToPromptResponse(morpheme: Morpheme) {
   const response = kata2hira(useLemma ? morpheme.lemmaReading : morpheme.pronunciation);
   {
     const lemmaAnyway = kata2hira(morpheme.lemmaReading);
-    if (!useLemma && response.includes(CHOUONPU) && findAlternativeChouonpu(response).find(s => s === lemmaAnyway)) {
+    if (!useLemma && response.includes(CHOUONPU) &&
+        (findAlternativeChouonpu(response).find(s => s === lemmaAnyway) ||
+         pronunciationReadingEqualChouonpu(morpheme))) {
       return {prompt, response: kata2hira(morpheme.lemmaReading)};
     }
   }

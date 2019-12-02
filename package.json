@@ -31,7 +31,8 @@
     "curtiz-utils": "git+https://github.com/fasiha/curtiz-utils.git",
     "eastasianwidth": "^0.2.0",
     "get-stdin": "^7.0.0",
-    "jmdict-furigana-node": "git+https://github.com/fasiha/jmdict-furigana-node.git"
+    "jmdict-furigana-node": "git+https://github.com/fasiha/jmdict-furigana-node.git",
+    "jmdict-simplified-node": "git+https://github.com/fasiha/jmdict-simplified-node.git"
   },
   "repository": "github:fasiha/curtiz-japanese-nlp"
 }
