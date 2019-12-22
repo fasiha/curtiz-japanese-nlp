@@ -43,7 +43,7 @@ export async function main(text: string) {
 
   const jmdictFurigana = await jmdictFuriganaPromise;
   const morphemes: WithSearch<Morpheme>[] = parsed.morphemes.map(
-      m => ({...m, search: morphemeToSearchLemma(m).concat(morphemeToStringLiteral(m, jmdictFurigana))}));
+      m => ({...m, search: unique(morphemeToSearchLemma(m).concat(morphemeToStringLiteral(m, jmdictFurigana)))}));
 
   const superhits: ScoreHit[][][] = [];
   for (const [i, m] of morphemes.entries()) {
@@ -98,6 +98,7 @@ function intersectionSize<T>(small: Set<T>, big: Set<T>): number {
   for (const x of small) { ret += +big.has(x); }
   return ret;
 }
+function unique<T>(v: T[]): T[] { return [...new Set(v)]; }
 
 const circledNumbers = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳".split('');
 const prefixNumber = (n: number) => circledNumbers[n] || '⓪';
