@@ -32,6 +32,11 @@ export async function mecabJdepp(sentence: string): Promise<{morphemes: Morpheme
 
 const p = (x: any) => console.dir(x, {depth: null});
 type WithSearch<T> = T&{ search: string[]; };
+type ScoreHit = {
+  word: Word,
+  score: number,
+  searches: string[],
+};
 export async function main(text: string) {
   const {db} = await jmdictPromise;
   const parsed = await mecabJdepp(text);
@@ -40,29 +45,59 @@ export async function main(text: string) {
   const morphemes: WithSearch<Morpheme>[] =
       parsed.morphemes.map(m => ({...m, search: morphemeToSearchString(m, jmdictFurigana)}));
 
-  const superhits: Word[][][] = [];
+  const superhits: ScoreHit[][][] = [];
   for (const [i, m] of morphemes.entries()) {
-    const hits: Word[][] = [];
+    const hits: ScoreHit[][] = [];
     for (let j = morphemes.length; j > i; --j) {
       const run = morphemes.slice(i, j);
       const searches = forkingPaths(run.map(m => m.search)).map(v => v.join(''));
 
       const subhits = flatten(await Promise.all(searches.map(search => readingBeginning(db, search))));
-      if (subhits.length > 0) { hits.push(subhits); }
+      const scored: ScoreHit[] = subhits.map(word => ({word, score: scoreMorphemeWord(run, searches, word), searches}));
+      // I want to see length matches first
+      // then kanji matches
+      scored.sort((a, b) => b.score - a.score);
+      if (scored.length > 0) { hits.push(scored); }
     }
     superhits.push(hits);
   }
   return superhits;
 }
+function scoreMorphemeWord(run: Morpheme[], searches: string[], word: Word): number {
+  const len = searches[0].length;
+  // if the shortest kana is shorter than the search, let the cost be 0. If shortest kana is longer than search, let the
+  // overrun cost be negative
+  const overrunPenalty = Math.min(
+      0, len - Math.min(
+                   ...word.kana.filter(k => searches.some(search => k.text.includes(search))).map(k => k.text.length)));
+
+  // literal may contain kanji that lemma doesn't, e.g., 大阪's literal in UniDic is katakana
+  const kanjiBonus = intersectionSize(new Set(flatten(run.map(m => (m.lemma + m.literal).split('').filter(hasKanji)))),
+                                      new Set(flatten(word.kanji.map(k => k.text.split('').filter(hasKanji)))));
+
+  return overrunPenalty * 10 + kanjiBonus * 1;
+}
+function intersection<T>(small: Set<T>, big: Set<T>): Set<T> {
+  if (small.size > big.size * 1.1) { return intersection(big, small); }
+  const ret: Set<T> = new Set();
+  for (const x of small) {
+    if (big.has(x)) { ret.add(x) }
+  }
+  return ret;
+}
+function intersectionSize<T>(small: Set<T>, big: Set<T>): number {
+  if (small.size > big.size * 1.1) { return intersectionSize(big, small); }
+  let ret = 0;
+  for (const x of small) { ret += +big.has(x); }
+  return ret;
+}
 
 const circledNumbers = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳".split('');
 const prefixNumber = (n: number) => circledNumbers[n] || '⓪';
-
 export function displayWord(w: Word) {
   return w.kanji.map(k => k.text).join('・') + '「' + w.kana.map(k => k.text).join('・') + '」：' +
          w.sense.map((sense, n) => prefixNumber(n) + ' ' + sense.gloss.map(gloss => gloss.text).join('/')).join('; ');
 }
-
 export function displayWordDetailed(w: Word, tags: {[k: string]: string}) {
   return w.kanji.map(k => k.text).join('・') + '「' + w.kana.map(k => k.text).join('・') + '」：' +
          w.sense
@@ -89,8 +124,8 @@ if (module === require.main) {
       for (const fromStart of res) {
         console.log('\n# START')
         for (const fromEnd of fromStart) {
-          console.log('## end')
-          for (const w of fromEnd) { console.log(displayWordDetailed(w, tags)); }
+          console.log('## end: ' + (fromEnd?.[0].searches.join('・') ||''))
+          for (const w of fromEnd) { console.log(displayWordDetailed(w.word, tags) + ` (score: ${w.score})`); }
         }
       }
       // console.dir(res, {depth: null});
