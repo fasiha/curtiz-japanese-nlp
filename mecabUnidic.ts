@@ -246,10 +246,10 @@ const partOfSpeechObj = keysToObj(partOfSpeechKeys);
 const inflectionObj = keysToObj(inflectionKeys);
 const inflectionTypeObj = keysToObj(inflectionTypeKeys);
 
-export function invokeMecab(line: string): Promise<string> {
+export function invokeMecab(text: string): Promise<string> {
   return new Promise((resolve, reject) => {
     let spawned = spawn('mecab', ['-d', '/usr/local/lib/mecab/dic/unidic']);
-    spawned.stdin.write(line);
+    spawned.stdin.write(text);
     spawned.stdin.write('\n'); // necessary, otherwise MeCab says `input-buffer overflow.`
     spawned.stdin.end();
     let arr: string[] = [];
@@ -350,6 +350,11 @@ export function decompressMorphemes(s: string): MaybeMorpheme[] { return s.split
 export function goodMorphemePredicate(m: Morpheme): boolean {
   return !(m.partOfSpeech[0] === 'supplementary_symbol') &&
          !(m.partOfSpeech[0] === 'particle' && m.partOfSpeech[1] === 'phrase_final');
+}
+
+export async function parse(text: string): Promise<Morpheme[][]> {
+  const m = parseMecab(text, await invokeMecab(text.trim()));
+  return m.map(v => v.filter(x => x !== null) as Morpheme[])
 }
 
 if (require.main === module) {

@@ -66,13 +66,6 @@ type Parsed = {
 type Seen = {
   furigana: Furigana[][]; reading: string;
 };
-
-// At each morpheme boundary, search JMDict for the longest matches
-export async function parsedToVocab(parsed: Parsed) {
-  const {textToEntry, readingToEntry} = await JmdictFurigana;
-  for (const [midx, morpheme] of parsed.morphemes.entries()) {}
-}
-
 export async function parseHeaderBlock(block: string[], seen: Map<string, Seen> = new Map([])): Promise<string[]> {
   const atHeaderRe = /^#+\s+@\s+/;
   const match = block[0].match(atHeaderRe);
