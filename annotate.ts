@@ -42,8 +42,8 @@ export async function main(text: string) {
   const parsed = await mecabJdepp(text);
 
   const jmdictFurigana = await jmdictFuriganaPromise;
-  const morphemes: WithSearch<Morpheme>[] =
-      parsed.morphemes.map(m => ({...m, search: morphemeToSearchString(m, jmdictFurigana)}));
+  const morphemes: WithSearch<Morpheme>[] = parsed.morphemes.map(
+      m => ({...m, search: morphemeToSearchLemma(m).concat(morphemeToStringLiteral(m, jmdictFurigana))}));
 
   const superhits: ScoreHit[][][] = [];
   for (const [i, m] of morphemes.entries()) {
@@ -72,10 +72,17 @@ function scoreMorphemeWord(run: Morpheme[], searches: string[], word: Word): num
                    ...word.kana.filter(k => searches.some(search => k.text.includes(search))).map(k => k.text.length)));
 
   // literal may contain kanji that lemma doesn't, e.g., 大阪's literal in UniDic is katakana
-  const kanjiBonus = intersectionSize(new Set(flatten(run.map(m => (m.lemma + m.literal).split('').filter(hasKanji)))),
-                                      new Set(flatten(word.kanji.map(k => k.text.split('').filter(hasKanji)))));
+  const wordKanjis = new Set(flatten(word.kanji.map(k => k.text.split('').filter(hasKanji))));
+  const lemmaKanjis = new Set(flatten(run.map(m => m.lemma.split('').filter(hasKanji))));
+  const literalKanjis = new Set(flatten(run.map(m => m.literal.split('').filter(hasKanji))));
+  const lemmaKanjiBonus = intersectionSize(lemmaKanjis, wordKanjis);
+  const literalKanjiBonus = intersectionSize(literalKanjis, wordKanjis);
 
-  return overrunPenalty * 10 + kanjiBonus * 1;
+  // make sure one-morpheme particles rise to the top of the pile of 10k hits...
+  const particleBonus = +(run.length === 1 && run[0].partOfSpeech.some(pos => pos.includes('particle')) &&
+                          word.sense.some(sense => sense.partOfSpeech.includes('prt')));
+
+  return overrunPenalty * 10 + literalKanjiBonus * 2 + lemmaKanjiBonus * 1 + 5 * particleBonus;
 }
 function intersection<T>(small: Set<T>, big: Set<T>): Set<T> {
   if (small.size > big.size * 1.1) { return intersection(big, small); }
@@ -118,26 +125,31 @@ if (module === require.main) {
     const jmdictFurigana = await jmdictFuriganaPromise;
     const {db} = await jmdictPromise;
     const tags = JSON.parse(await getField(db, 'tags'));
+
     {
-      // const lines = (await pfs.readFile('tono.txt', 'utf8')).trim().split('\n').map(s => s.split('\t')[0]);
-      const res = await main('彼はこの大学の学生だ。');
-      for (const fromStart of res) {
-        console.log('\n# START')
-        for (const fromEnd of fromStart) {
-          console.log('## end: ' + (fromEnd?.[0].searches.join('・') ||''))
-          for (const w of fromEnd) { console.log(displayWordDetailed(w.word, tags) + ` (score: ${w.score})`); }
+      const lines = (await pfs.readFile('tono.txt', 'utf8')).trim().split('\n').map(s => s.split('\t')[0]);
+      const MAX_LINES = 25;
+      for (const line of lines.slice(0, 2)) {
+        console.log('\n\n# ' + line);
+        const res = await main(line);
+        for (const fromStart of res) {
+          console.log('\n## START')
+          for (const fromEnd of fromStart) {
+            console.log('### end: ' + ((fromEnd[0] && fromEnd[0].searches.join('・')) || ''));
+            for (const w of fromEnd.slice(0, MAX_LINES)) {
+              console.log(displayWordDetailed(w.word, tags) + ` (score: ${w.score})`);
+            }
+            if (fromEnd.length > MAX_LINES) { console.log(`(… ${fromEnd.length - MAX_LINES} omitted)`); }
+          }
         }
       }
-      // console.dir(res, {depth: null});
-      // const res = await main(lines[0]);
-      // console.dir(res, {depth: null});
     }
 
     if (false) {
       const lines = (await pfs.readFile('tono.txt', 'utf8')).trim().split('\n').map(s => s.split('\t')[0]).join('\n');
       const parsed = flatten(await parse(lines));
       const chu = parsed.filter(o => o.pronunciation.includes(CHOUONPU));
-      const sols = chu.map(m => morphemeToSearchString(m, jmdictFurigana));
+      const sols = chu.map(m => morphemeToStringLiteral(m, jmdictFurigana));
       console.log(`${chu.length} morphemes with chouonpu`);
       console.log(chu.map(({literal, pronunciation, lemmaReading, lemma},
                            i) => [literal, sols[i].join('・'), pronunciation, lemmaReading, lemma].join(' | '))
@@ -146,8 +158,16 @@ if (module === require.main) {
   })();
 }
 
+function morphemeToSearchLemma(m: Morpheme): string[] {
+  const pos0 = m.partOfSpeech[0];
+  const conjugatable = (m.inflection ?.[0]) || (m.inflectionType ?.[0]) || pos0.startsWith('verb') ||
+                                              pos0.endsWith('_verb') || pos0.startsWith('adject');
+  return conjugatable ? [kata2hira(m.lemmaReading)] : [];
+  // literal's pronunciation will handle the rest
+}
+
 const CHOUONPU = 'ー'; // https://en.wikipedia.org/wiki/Ch%C5%8Donpu
-function morphemeToSearchString(m: Morpheme, jmdictFurigana?: JmdictFurigana): string[] {
+function morphemeToStringLiteral(m: Morpheme, jmdictFurigana?: JmdictFurigana): string[] {
   if (!hasKanji(m.literal)) { return [m.literal]; }
   // so literal has kanji
   if (!m.pronunciation.includes(CHOUONPU)) { return [kata2hira(m.pronunciation)]; }
