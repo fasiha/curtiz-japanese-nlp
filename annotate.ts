@@ -1,6 +1,6 @@
-import {flatten, hasHiragana, hasKanji, kata2hira} from 'curtiz-utils'
+import {filterRight, flatten, hasHiragana, hasKanji, kata2hira} from 'curtiz-utils'
 import {promises as pfs} from 'fs';
-import {JmdictFurigana, setup as setupJmdictFurigana} from 'jmdict-furigana-node';
+import {Furigana, JmdictFurigana, setup as setupJmdictFurigana} from 'jmdict-furigana-node';
 import {
   getField,
   readingAnywhere,
@@ -23,7 +23,11 @@ import {
 const jmdictFuriganaPromise = setupJmdictFurigana()
 const jmdictPromise = setupJmdict('jmdict-simplified', 'jmdict-eng-3.0.1.json');
 
-export async function mecabJdepp(sentence: string): Promise<{morphemes: Morpheme[]; bunsetsus: Morpheme[][];}> {
+interface MecabJdeppParsed {
+  morphemes: Morpheme[];
+  bunsetsus: Morpheme[][];
+}
+export async function mecabJdepp(sentence: string): Promise<MecabJdeppParsed> {
   let rawMecab = await invokeMecab(sentence);
   let morphemes = maybeMorphemesToMorphemes(parseMecab(sentence, rawMecab)[0].filter(o => !!o));
   let bunsetsus = await addJdepp(rawMecab, morphemes);
@@ -37,9 +41,8 @@ type ScoreHit = {
   score: number,
   searches: string[],
 };
-export async function main(text: string) {
+export async function enumerateDictionaryHits(parsed: MecabJdeppParsed) {
   const {db} = await jmdictPromise;
-  const parsed = await mecabJdepp(text);
 
   const jmdictFurigana = await jmdictFuriganaPromise;
   const morphemes: WithSearch<Morpheme>[] = parsed.morphemes.map(
@@ -121,42 +124,98 @@ function forkingPaths<T>(v: T[][]): T[][] {
   return ret;
 }
 
-if (module === require.main) {
-  (async () => {
-    const jmdictFurigana = await jmdictFuriganaPromise;
-    const {db} = await jmdictPromise;
-    const tags = JSON.parse(await getField(db, 'tags'));
+/**
+ * Ensure needle is found in haystack only once
+ * @param haystack big string
+ * @param needle little string
+ */
+function appearsExactlyOnce(haystack: string, needle: string): boolean {
+  const hit = haystack.indexOf(needle);
+  return hit >= 0 && haystack.indexOf(needle, hit + 1) < 0;
+}
 
-    {
-      const lines = (await pfs.readFile('tono.txt', 'utf8')).trim().split('\n').map(s => s.split('\t')[0]);
-      const MAX_LINES = 25;
-      for (const line of lines.slice(0, 2)) {
-        console.log('\n\n# ' + line);
-        const res = await main(line);
-        for (const fromStart of res) {
-          console.log('\n## START')
-          for (const fromEnd of fromStart) {
-            console.log('### end: ' + ((fromEnd[0] && fromEnd[0].searches.join('・')) || ''));
-            for (const w of fromEnd.slice(0, MAX_LINES)) {
-              console.log(displayWordDetailed(w.word, tags) + ` (score: ${w.score})`);
-            }
-            if (fromEnd.length > MAX_LINES) { console.log(`(… ${fromEnd.length - MAX_LINES} omitted)`); }
-          }
+interface ContextCloze {
+  left: string;
+  cloze: string;
+  right: string;
+}
+function contextClozeToString(c: ContextCloze): string { return c.left + c.cloze + c.right; }
+/**
+ * Given three consecutive substrings (the arguments), return `{left: left2, cloze, right: right2}` where
+ * `left2` and `right2` are as short as possible and `${left2}${cloze}${right2}` is unique in the full string.
+ * @param left left string, possibly empty
+ * @param cloze middle string
+ * @param right right string, possible empty
+ * @throws in the unlikely event that such a return string cannot be build (I cannot think of an example though)
+ */
+function generateContextClozed(left: string, cloze: string, right: string): ContextCloze {
+  const sentence = left + cloze + right;
+  let leftContext = '';
+  let rightContext = '';
+  let contextLength = 0;
+  while (!appearsExactlyOnce(sentence, leftContext + cloze + rightContext)) {
+    contextLength++;
+    if (contextLength >= left.length && contextLength >= right.length) {
+      throw new Error('Ran out of context to build unique cloze');
+    }
+    leftContext = left.slice(-contextLength);
+    rightContext = right.slice(0, contextLength);
+  }
+  return {left: leftContext, cloze, right: rightContext};
+}
+const bunsetsuToString = (morphemes: Morpheme[]) => morphemes.map(m => m.literal).join('');
+interface ConjugatedPhrase {
+  cloze: ContextCloze;
+  lemmas: Furigana[][];
+}
+async function identifyFillInBlanks(bunsetsus: Morpheme[][]) {
+  // Find clozes: particles and conjugated verb/adjective phrases
+  // const literalClozes: Map<string, Morpheme[]> = new Map([]);
+  const conjugatedPhrases: Map<string, ConjugatedPhrase> = new Map();
+  const particles: Map<string, ContextCloze> = new Map();
+  for (const [bidx, bunsetsu] of bunsetsus.entries()) {
+    const first = bunsetsu[0];
+    if (!first) { continue; }
+    const pos0 = first.partOfSpeech[0];
+    if (bunsetsus.length > 1 && bunsetsu.length > 1 &&
+        (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject'))) {
+      const ignoreRight = filterRight(bunsetsu, m => !goodMorphemePredicate(m));
+      const goodBunsetsu = ignoreRight.length === 0 ? bunsetsu : bunsetsu.slice(0, -ignoreRight.length);
+      if (goodBunsetsu.length > 1) {
+        const cloze = bunsetsuToString(goodBunsetsu);
+        const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('');
+        const right = bunsetsuToString(ignoreRight) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
+        if (!conjugatedPhrases.has(cloze)) {
+          const jf = await jmdictFuriganaPromise;
+          conjugatedPhrases.set(cloze, {
+            cloze: generateContextClozed(left, cloze, right),
+            lemmas: bunsetsu.map(o => {
+              const entries = jf.textToEntry.get(o.lemma) || [];
+              const lemmaReading = kata2hira(o.lemmaReading);
+              const entry = entries.find(e => e.reading === lemmaReading);
+              return entry ? entry.furigana : [{ruby: o.lemma, rt: lemmaReading}];
+            })
+          });
         }
+        // if we found a bunsetsu to study, don't search for particles *inside* it!
+        continue;
       }
     }
-
-    if (false) {
-      const lines = (await pfs.readFile('tono.txt', 'utf8')).trim().split('\n').map(s => s.split('\t')[0]).join('\n');
-      const parsed = flatten(await parse(lines));
-      const chu = parsed.filter(o => o.pronunciation.includes(CHOUONPU));
-      const sols = chu.map(m => morphemeToStringLiteral(m, jmdictFurigana));
-      console.log(`${chu.length} morphemes with chouonpu`);
-      console.log(chu.map(({literal, pronunciation, lemmaReading, lemma},
-                           i) => [literal, sols[i].join('・'), pronunciation, lemmaReading, lemma].join(' | '))
-                      .join('\n'));
+    // only add particles if they're NOT inside conjugated phrases
+    const particlePredicate = (p: Morpheme) => p.partOfSpeech[0].startsWith('particle') && p.partOfSpeech.length > 1 &&
+                                               !p.partOfSpeech[1].startsWith('phrase_final');
+    for (const [pidx, particle] of bunsetsu.entries()) {
+      if (particlePredicate(particle)) {
+        const left =
+            bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(bunsetsu.slice(0, pidx));
+        const right =
+            bunsetsuToString(bunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
+        const cloze = generateContextClozed(left, particle.literal, right);
+        particles.set(contextClozeToString(cloze), cloze);
+      }
     }
-  })();
+  }
+  return {particles, conjugatedPhrases};
 }
 
 function morphemeToSearchLemma(m: Morpheme): string[] {
@@ -252,3 +311,63 @@ const DUMB_CHOUONPU_MAP = (function makeChouonpuMap() {
   doer(os, 'う');
   return m;
 })();
+
+if (module === require.main) {
+  (async () => {
+    const jmdictFurigana = await jmdictFuriganaPromise;
+    const {db} = await jmdictPromise;
+    const tags = JSON.parse(await getField(db, 'tags'));
+
+    {
+      const lines = (await pfs.readFile('tono.txt', 'utf8')).trim().split('\n').map(s => s.split('\t')[0]);
+      const MAX_LINES = 25;
+      for (const line of lines.slice(0, 20)) {
+        console.log('\n\n# ' + line);
+        const parsed = await mecabJdepp(line);
+
+        {
+          const res = await identifyFillInBlanks(parsed.bunsetsus);
+          if (res.particles.size) {
+            console.log('\n## Particles');
+            for (const [_, cloze] of res.particles) {
+              console.log(
+                  `- ${cloze.left}${cloze.left || cloze.right ? '[' + cloze.cloze + ']' : cloze.cloze}${cloze.right}`);
+            }
+          }
+          if (res.conjugatedPhrases.size) {
+            console.log('\n## Conjugated phrases');
+            for (const [_, c] of res.conjugatedPhrases) {
+              const cloze = c.cloze;
+              console.log(
+                  `- ${cloze.left}${cloze.left || cloze.right ? '[' + cloze.cloze + ']' : cloze.cloze}${cloze.right}`);
+            }
+          }
+        }
+        {
+          const res = await enumerateDictionaryHits(parsed);
+          for (const fromStart of res) {
+            console.log('\n## START')
+            for (const fromEnd of fromStart) {
+              console.log('### end: ' + ((fromEnd[0] && fromEnd[0].searches.join('・')) || ''));
+              for (const w of fromEnd.slice(0, MAX_LINES)) {
+                console.log(displayWordDetailed(w.word, tags) + ` (score: ${w.score})`);
+              }
+              if (fromEnd.length > MAX_LINES) { console.log(`(… ${fromEnd.length - MAX_LINES} omitted)`); }
+            }
+          }
+        }
+      }
+    }
+
+    if (false) {
+      const lines = (await pfs.readFile('tono.txt', 'utf8')).trim().split('\n').map(s => s.split('\t')[0]).join('\n');
+      const parsed = flatten(await parse(lines));
+      const chu = parsed.filter(o => o.pronunciation.includes(CHOUONPU));
+      const sols = chu.map(m => morphemeToStringLiteral(m, jmdictFurigana));
+      console.log(`${chu.length} morphemes with chouonpu`);
+      console.log(chu.map(({literal, pronunciation, lemmaReading, lemma},
+                           i) => [literal, sols[i].join('・'), pronunciation, lemmaReading, lemma].join(' | '))
+                      .join('\n'));
+    }
+  })();
+}
