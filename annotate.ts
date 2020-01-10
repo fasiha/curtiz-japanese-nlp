@@ -1,6 +1,6 @@
 import {filterRight, flatten, hasHiragana, hasKanji, kata2hira} from 'curtiz-utils'
 import {promises as pfs} from 'fs';
-import {Furigana, furiganaToString, JmdictFurigana, setup as setupJmdictFurigana} from 'jmdict-furigana-node';
+import {Entry, Furigana, furiganaToString, JmdictFurigana, setup as setupJmdictFurigana} from 'jmdict-furigana-node';
 import {
   getField,
   readingAnywhere,
@@ -227,7 +227,12 @@ function morphemeToSearchLemma(m: Morpheme): string[] {
 }
 
 const CHOUONPU = 'ー'; // https://en.wikipedia.org/wiki/Ch%C5%8Donpu
-function morphemeToStringLiteral(m: Morpheme, jmdictFurigana?: JmdictFurigana): string[] {
+/**
+ * Returns array of strings in hiragana, without chouonpu, representing possible pronunciations
+ * Tries hard to make sure the returned array has length 1.
+ */
+function morphemeToStringLiteral(m: Pick<Morpheme, 'literal'|'lemma'|'pronunciation'|'lemmaReading'>,
+                                 jmdictFurigana?: JmdictFurigana): string[] {
   if (!hasKanji(m.literal)) { return [m.literal]; }
   // so literal has kanji
   if (!m.pronunciation.includes(CHOUONPU)) { return [kata2hira(m.pronunciation)]; }
@@ -278,7 +283,8 @@ function morphemeToStringLiteral(m: Morpheme, jmdictFurigana?: JmdictFurigana): 
     }
   }
 
-  // No choice, オー and トー need to be mapped to both options
+  // No choice, オー and トー need to be mapped to both options.
+  // Other chouonpu mapped via `DUMB_CHOUONPU_MAP`.
 
   const pronunciation = m.pronunciation.split('');
   let ret: string[][] = [[]];
@@ -312,6 +318,91 @@ const DUMB_CHOUONPU_MAP = (function makeChouonpuMap() {
   return m;
 })();
 
+async function morphemesToFurigana(morphemes: Morpheme[], overrides: Map<string, Furigana[]>,
+                                   jmdictFurigana: JmdictFurigana): Promise<Furigana[][]> {
+  const furigana: Furigana[][] = await Promise.all(morphemes.map(async m => {
+    const {lemma, lemmaReading, literal, pronunciation} = m;
+    if (hasKanji(literal)) {
+      {
+        const hit = overrides.get(literal);
+        if (hit) { return hit; }
+      }
+
+      const {textToEntry, readingToEntry} = jmdictFurigana;
+
+      const literalHit = search(textToEntry, literal, 'reading', morphemeToStringLiteral(m, jmdictFurigana));
+      if (literalHit) { return literalHit.furigana; }
+      const pronunciationHit = search(readingToEntry, pronunciation, 'text', [literal]);
+      if (pronunciationHit) { return pronunciationHit.furigana; }
+
+      const lemmaHit = search(
+          textToEntry, lemma, 'reading',
+          morphemeToStringLiteral({lemma, lemmaReading, literal: lemma, pronunciation: lemmaReading}, jmdictFurigana));
+      if (lemmaHit) {
+        const furiganaDict: Map<string, string> = new Map();
+        for (const f of lemmaHit.furigana) {
+          if (typeof f === 'string') { continue; }
+          furiganaDict.set(f.ruby, f.rt);
+        }
+
+        const chars = literal.split('');
+        let kanji = chars.filter(hasKanji);
+        const annotatedChars: Furigana[] = chars.slice();
+
+        // start from all kanji characters in a string, see if that's in furiganaDict, if not, chop last
+        while (kanji.length) {
+          const hit = triu(kanji).find(ks => furiganaDict.has(ks.join('')));
+          if (hit) {
+            const hitstr = hit.join('');
+            const idx = literal.indexOf(hitstr);
+            annotatedChars[idx] = {ruby: hitstr, rt: furiganaDict.get(hitstr) || hitstr};
+            for (let i = idx + 1; i < idx + hitstr.length; i++) { annotatedChars[i] = ''; }
+            kanji = kanji.slice(hitstr.length);
+            continue;
+          }
+          break;
+        }
+        return annotatedChars;
+      }
+      // const lemmaReadingHit = search(readingToEntry, lemmaReading, 'text', lemma);
+      // if (lemmaReadingHit) { return lemmaReadingHit.furigana; }
+    }
+    return [hasKanji(literal) ? {ruby: literal, rt: morphemeToStringLiteral(m).join('・')} : literal];
+  }));
+
+  return furigana;
+}
+function triu<T>(arr: T[]): T[][] {
+  const ret: T[][] = [];
+  for (let i = arr.length; i > 0; --i) { ret.push(arr.slice(0, i)); }
+  return ret;
+}
+function search(map: JmdictFurigana['readingToEntry'], first: string, sub: 'reading'|'text',
+                possibleSeconds: string[]): Entry|undefined {
+  const hit = map.get(first);
+  if (hit) {
+    if (hit.length === 1) { return hit[0]; }
+    // const possibleSeconds = findAlternativeChouonpu(kata2hira(second));
+    const subhit = hit.find(e => {
+      const dict = kata2hira(e[sub]);
+      return possibleSeconds.some(second => second === dict);
+    });
+    if (subhit) { return subhit; }
+    console.error(`found hit for ${first} but not ${possibleSeconds}`, {hit, possibleSeconds});
+  }
+}
+// function morphemeToReading(m: Morpheme): string {
+//   if (!hasKanji(m.literal)) { return m.literal; }
+//   const ret = kata2hira(m.literal === m.lemma ? m.lemmaReading : m.pronunciation);
+//   if (!ret.includes(CHOUONPU)) { return ret; }
+//   const alts = findAlternativeChouonpu(ret);
+//   return alts[1] || ret;
+// }
+
+function furiganaToRuby(fs: Furigana[]): string {
+  return fs.map(f => typeof f === 'string' ? f : `<ruby>${f.ruby}<rt>${f.rt}</rt></ruby>`).join('');
+}
+
 if (module === require.main) {
   (async () => {
     const jmdictFurigana = await jmdictFuriganaPromise;
@@ -320,10 +411,13 @@ if (module === require.main) {
 
     {
       const lines = (await pfs.readFile('tono.txt', 'utf8')).trim().split('\n').map(s => s.split('\t')[0]);
-      const MAX_LINES = 25;
+      const MAX_LINES = 8;
+      const overrides: Map<string, Furigana[]> = new Map();
       for (const line of lines.slice(0, 3)) {
-        console.log('- ' + line);
         const parsed = await mecabJdepp(line);
+        console.log(
+            '- ' + line + ' @furigana ' +
+            (await morphemesToFurigana(parsed.morphemes, overrides, jmdictFurigana)).map(furiganaToRuby).join(''));
 
         {
           const res = await identifyFillInBlanks(parsed.bunsetsus);
@@ -340,7 +434,7 @@ if (module === require.main) {
               const cloze = c.cloze;
               console.log(`    - @fill ${cloze.left}${
                   cloze.left || cloze.right ? '[' + cloze.cloze + ']'
-                                            : cloze.cloze}${cloze.right} @hint ${furiganaToString(c.lemmas[0])}`);
+                                            : cloze.cloze}${cloze.right} @hint ${furiganaToRuby(c.lemmas[0])}`);
             }
           }
         }
