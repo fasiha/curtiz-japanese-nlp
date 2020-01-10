@@ -1,4 +1,4 @@
-import {filterRight, flatten, hasHiragana, hasKanji, kata2hira} from 'curtiz-utils'
+import {filterRight, flatmap, flatten, hasHiragana, hasKanji, kata2hira} from 'curtiz-utils'
 import {promises as pfs} from 'fs';
 import {Entry, Furigana, furiganaToString, JmdictFurigana, setup as setupJmdictFurigana} from 'jmdict-furigana-node';
 import {
@@ -410,13 +410,32 @@ if (module === require.main) {
     const tags = JSON.parse(await getField(db, 'tags'));
 
     {
-      const lines = (await pfs.readFile('tono.txt', 'utf8')).trim().split('\n').map(s => s.split('\t')[0]);
+      let lines = `- @ 今日は良い天気だ。
+- @ たのしいですか。
+- @ 何できた？`.split('\n');
+      if (process.argv.length <= 2) {
+        const getStdin = require('get-stdin');
+
+        // no arguments, read from stdin. If stdin is empty, use default.
+        const raw = (await getStdin()).trim();
+        if (raw) { lines = raw.split('\n'); }
+      } else {
+        lines = flatmap(await Promise.all(process.argv.slice(2).map(f => pfs.readFile(f, 'utf8'))),
+                        s => s.trim().replace(/\r/g, '').split('\n'));
+      }
+
+      // const lines = (await pfs.readFile('tono.txt', 'utf8')).trim().split('\n').map(s => s.split('\t')[0]);
       const MAX_LINES = 8;
       const overrides: Map<string, Furigana[]> = new Map();
-      for (const line of lines.slice(0, 3)) {
+      const startRegexp = /^-\s+@\s+./;
+      for (const line of lines) {
+        if (!startRegexp.test(line)) {
+          console.log(line);
+          continue;
+        }
         const parsed = await mecabJdepp(line);
         console.log(
-            '- ' + line + ' @furigana ' +
+            line + ' @furigana ' +
             (await morphemesToFurigana(parsed.morphemes, overrides, jmdictFurigana)).map(furiganaToRuby).join(''));
 
         {
