@@ -1,6 +1,6 @@
 import {filterRight, flatten, hasHiragana, hasKanji, kata2hira} from 'curtiz-utils'
 import {promises as pfs} from 'fs';
-import {Furigana, JmdictFurigana, setup as setupJmdictFurigana} from 'jmdict-furigana-node';
+import {Furigana, furiganaToString, JmdictFurigana, setup as setupJmdictFurigana} from 'jmdict-furigana-node';
 import {
   getField,
   readingAnywhere,
@@ -321,38 +321,38 @@ if (module === require.main) {
     {
       const lines = (await pfs.readFile('tono.txt', 'utf8')).trim().split('\n').map(s => s.split('\t')[0]);
       const MAX_LINES = 25;
-      for (const line of lines.slice(0, 20)) {
-        console.log('\n\n# ' + line);
+      for (const line of lines.slice(0, 3)) {
+        console.log('- ' + line);
         const parsed = await mecabJdepp(line);
 
         {
           const res = await identifyFillInBlanks(parsed.bunsetsus);
           if (res.particles.size) {
-            console.log('\n## Particles');
+            console.log('  - Particles');
             for (const [_, cloze] of res.particles) {
-              console.log(
-                  `- ${cloze.left}${cloze.left || cloze.right ? '[' + cloze.cloze + ']' : cloze.cloze}${cloze.right}`);
+              console.log(`    - @fill ${cloze.left}${
+                  cloze.left || cloze.right ? '[' + cloze.cloze + ']' : cloze.cloze}${cloze.right}`);
             }
           }
           if (res.conjugatedPhrases.size) {
-            console.log('\n## Conjugated phrases');
+            console.log('  - Conjugated phrases');
             for (const [_, c] of res.conjugatedPhrases) {
               const cloze = c.cloze;
-              console.log(
-                  `- ${cloze.left}${cloze.left || cloze.right ? '[' + cloze.cloze + ']' : cloze.cloze}${cloze.right}`);
+              console.log(`    - @fill ${cloze.left}${
+                  cloze.left || cloze.right ? '[' + cloze.cloze + ']'
+                                            : cloze.cloze}${cloze.right} @hint ${furiganaToString(c.lemmas[0])}`);
             }
           }
         }
         {
           const res = await enumerateDictionaryHits(parsed);
           for (const fromStart of res) {
-            console.log('\n## START')
             for (const fromEnd of fromStart) {
-              console.log('### end: ' + ((fromEnd[0] && fromEnd[0].searches.join('・')) || ''));
+              console.log('  - end: ' + ((fromEnd[0] && fromEnd[0].searches.join('・')) || ''));
               for (const w of fromEnd.slice(0, MAX_LINES)) {
-                console.log(displayWordDetailed(w.word, tags) + ` (score: ${w.score})`);
+                console.log('    - @dict ' + displayWordDetailed(w.word, tags) + ` (score: ${w.score})`);
               }
-              if (fromEnd.length > MAX_LINES) { console.log(`(… ${fromEnd.length - MAX_LINES} omitted)`); }
+              if (fromEnd.length > MAX_LINES) { console.log(`    - (… ${fromEnd.length - MAX_LINES} omitted)`); }
             }
           }
         }
