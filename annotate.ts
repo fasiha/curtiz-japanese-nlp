@@ -427,16 +427,20 @@ if (module === require.main) {
       // const lines = (await pfs.readFile('tono.txt', 'utf8')).trim().split('\n').map(s => s.split('\t')[0]);
       const MAX_LINES = 8;
       const overrides: Map<string, Furigana[]> = new Map();
-      const startRegexp = /^-\s+@\s+./;
+      const startRegexp = /^-\s+@\s+/;
       for (const line of lines) {
         if (!startRegexp.test(line)) {
           console.log(line);
           continue;
         }
-        const parsed = await mecabJdepp(line);
-        console.log(
-            line + ' @furigana ' +
-            (await morphemesToFurigana(parsed.morphemes, overrides, jmdictFurigana)).map(furiganaToRuby).join(''));
+        const sentence = line.slice(line.match(startRegexp) ?.[0].length );
+        const parsed = await mecabJdepp(sentence);
+        const furigana = hasKanji(sentence)
+                             ? ' @furigana ' + (await morphemesToFurigana(parsed.morphemes, overrides, jmdictFurigana))
+                                                   .map(furiganaToRuby)
+                                                   .join('')
+                             : '';
+        console.log(line + furigana);
 
         {
           const res = await identifyFillInBlanks(parsed.bunsetsus);
