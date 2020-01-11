@@ -222,7 +222,8 @@ function morphemeToSearchLemma(m: Morpheme): string[] {
   const pos0 = m.partOfSpeech[0];
   const conjugatable = (m.inflection ?.[0]) || (m.inflectionType ?.[0]) || pos0.startsWith('verb') ||
                                               pos0.endsWith('_verb') || pos0.startsWith('adject');
-  return conjugatable ? [kata2hira(m.lemmaReading)] : [];
+  const potentialRendaku = m.literal === m.lemma && hasKanji(m.lemma) && m.lemmaReading !== m.pronunciation;
+  return (conjugatable || potentialRendaku) ? [kata2hira(m.lemmaReading)] : [];
   // literal's pronunciation will handle the rest
 }
 
@@ -335,6 +336,11 @@ async function morphemesToFurigana(morphemes: Morpheme[], overrides: Map<string,
       const pronunciationHit = search(readingToEntry, pronunciation, 'text', [literal]);
       if (pronunciationHit) { return pronunciationHit.furigana; }
 
+      // help with 一本/rendaku
+      if (literal.length === 1) { return [{ruby: literal, rt: morphemeToStringLiteral(m).join('・')}]; }
+
+      // for e.g. 住ん|で|い|ます but not 一本 (pronounced pon but lemma=hon: rendaku)
+      // if you reach here, there's nothing ensuring that the furigana found will match `pronunciation`!
       const lemmaHit = search(
           textToEntry, lemma, 'reading',
           morphemeToStringLiteral({lemma, lemmaReading, literal: lemma, pronunciation: lemmaReading}, jmdictFurigana));
@@ -360,9 +366,10 @@ async function morphemesToFurigana(morphemes: Morpheme[], overrides: Map<string,
             kanji = kanji.slice(hitstr.length);
             continue;
           }
+          // no hit found, kanji won't shrink to empty, break now
           break;
         }
-        return annotatedChars;
+        if (kanji.length === 0) { return annotatedChars; }
       }
       // const lemmaReadingHit = search(readingToEntry, lemmaReading, 'text', lemma);
       // if (lemmaReadingHit) { return lemmaReadingHit.furigana; }
@@ -381,7 +388,6 @@ function search(map: JmdictFurigana['readingToEntry'], first: string, sub: 'read
                 possibleSeconds: string[]): Entry|undefined {
   const hit = map.get(first);
   if (hit) {
-    if (hit.length === 1) { return hit[0]; }
     // const possibleSeconds = findAlternativeChouonpu(kata2hira(second));
     const subhit = hit.find(e => {
       const dict = kata2hira(e[sub]);
@@ -474,17 +480,6 @@ if (module === require.main) {
           }
         }
       }
-    }
-
-    if (false) {
-      const lines = (await pfs.readFile('tono.txt', 'utf8')).trim().split('\n').map(s => s.split('\t')[0]).join('\n');
-      const parsed = flatten(await parse(lines));
-      const chu = parsed.filter(o => o.pronunciation.includes(CHOUONPU));
-      const sols = chu.map(m => morphemeToStringLiteral(m, jmdictFurigana));
-      console.log(`${chu.length} morphemes with chouonpu`);
-      console.log(chu.map(({literal, pronunciation, lemmaReading, lemma},
-                           i) => [literal, sols[i].join('・'), pronunciation, lemmaReading, lemma].join(' | '))
-                      .join('\n'));
     }
   })();
 }
