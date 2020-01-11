@@ -294,7 +294,7 @@ function morphemeToStringLiteral(m: Pick<Morpheme, 'literal'|'lemma'|'pronunciat
       if (pronunciation[i - 1] === 'ト' || pronunciation[i - 1] === 'オ') {
         ret = [...ret.map(v => v.concat('オ')), ...ret.map(v => v.concat('ウ'))];
       } else {
-        ret.forEach(v => v.push(DUMB_CHOUONPU_MAP.get(pronunciation[i - 1]) || CHOUONPU))
+        ret.forEach(v => v.push(DUMB_CHOUONPU_MAP.get(kata2hira(pronunciation[i - 1])) || CHOUONPU))
       }
       continue;
     }
