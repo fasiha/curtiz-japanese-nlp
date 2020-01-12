@@ -69,9 +69,16 @@ export async function enumerateDictionaryHits(parsed: MecabJdeppParsed) {
       {
         const kanjiSearches = run.map(m => m.searchKanji).join('');
         const kanjiSubhits = hasKanji(kanjiSearches) ? await kanjiBeginning(db, kanjiSearches) : [];
-        scored.push(...kanjiSubhits.map(
-            word =>
-                ({word, score: scoreMorphemeWord(run, [kanjiSearches], 'kanji', word), searches: [kanjiSearches]})));
+        if (kanjiSubhits.length > 0) {
+          // dedupe a little bit at least
+          const ids = new Set(readingSubhits.slice(0, 100).map(o => o.id));
+          scored.push(...kanjiSubhits.filter(o => !ids.has(o.id)).map(word => ({
+                                                                        word,
+                                                                        score: scoreMorphemeWord(run, [kanjiSearches],
+                                                                                                 'kanji', word),
+                                                                        searches: [kanjiSearches]
+                                                                      })));
+        }
       }
 
       scored.sort((a, b) => b.score - a.score);
@@ -80,6 +87,23 @@ export async function enumerateDictionaryHits(parsed: MecabJdeppParsed) {
     superhits.push(hits);
   }
   return superhits;
+}
+/**
+ * Remove adjacent duplicates given a predicate
+ */
+function dedupe<T, U>(v: T[], f: (x: T) => U): T[] {
+  if (v.length === 0) { return []; }
+  const ret: T[] = [v[0]];
+  let old = f(v[0]);
+  // Use the iterator here instead of v.slice(1) because that makes a copy of most of the array, which annoys me
+  const iterator = v.values();
+  iterator.next();
+  for (const x of iterator) {
+    const notOld = f(x)
+    if (old !== notOld) { ret.push(x); }
+    old = notOld;
+  }
+  return ret;
 }
 function scoreMorphemeWord(run: Morpheme[], searches: string[], searchKey: 'kana'|'kanji', word: Word): number {
   const len = searches[0].length; // all elements of `searches` have same length: differences only for chouonpu
