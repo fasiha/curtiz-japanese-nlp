@@ -50,7 +50,7 @@ export async function enumerateDictionaryHits(parsed: MecabJdeppParsed) {
   const morphemes: WithSearchKanji<WithSearchReading<Morpheme>>[] = parsed.morphemes.map(
       m => ({
         ...m,
-        searchKanji: [m.literal],
+        searchKanji: unique([m.literal, m.lemma]),
         searchReading: unique(morphemeToSearchLemma(m).concat(morphemeToStringLiteral(m, jmdictFurigana)))
       }));
 
@@ -67,16 +67,16 @@ export async function enumerateDictionaryHits(parsed: MecabJdeppParsed) {
 
       // Search literals if needed, this works around MeCab mis-readings like お父さん->おちちさん
       {
-        const kanjiSearches = run.map(m => m.searchKanji).join('');
-        const kanjiSubhits = hasKanji(kanjiSearches) ? await kanjiBeginning(db, kanjiSearches) : [];
+        const kanjiSearches = forkingPaths(run.map(m => m.searchKanji)).map(v => v.join('')).filter(hasKanji);
+        const kanjiSubhits = flatten(await Promise.all(kanjiSearches.map(search => kanjiBeginning(db, search))));
         if (kanjiSubhits.length > 0) {
           // dedupe a little bit at least
           const ids = new Set(readingSubhits.slice(0, 100).map(o => o.id));
           scored.push(...kanjiSubhits.filter(o => !ids.has(o.id)).map(word => ({
                                                                         word,
-                                                                        score: scoreMorphemeWord(run, [kanjiSearches],
+                                                                        score: scoreMorphemeWord(run, kanjiSearches,
                                                                                                  'kanji', word),
-                                                                        searches: [kanjiSearches]
+                                                                        searches: kanjiSearches
                                                                       })));
         }
       }
@@ -106,7 +106,11 @@ function dedupe<T, U>(v: T[], f: (x: T) => U): T[] {
   return ret;
 }
 function scoreMorphemeWord(run: Morpheme[], searches: string[], searchKey: 'kana'|'kanji', word: Word): number {
-  const len = searches[0].length; // all elements of `searches` have same length: differences only for chouonpu
+  // for searchKey='kana', all elements of `searches` have same length: differences only for chouonpu.
+  // for 'kanji', that's no longer the case, but so few of those are expected that I'm not bothering to find a perfect
+  // solution FIXME
+  const len = searches[0].length;
+
   // if the shortest kana is shorter than the search, let the cost be 0. If shortest kana is longer than search, let the
   // overrun cost be negative. Shortest because we're being optimistic
   const overrunPenalty = Math.min(0, len - Math.min(...word[searchKey]
