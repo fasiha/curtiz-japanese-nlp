@@ -3,6 +3,7 @@ import {promises as pfs} from 'fs';
 import {Entry, Furigana, furiganaToString, JmdictFurigana, setup as setupJmdictFurigana} from 'jmdict-furigana-node';
 import {
   getField,
+  kanjiBeginning,
   readingAnywhere,
   readingBeginning,
   setup as setupJmdict,
@@ -35,7 +36,8 @@ export async function mecabJdepp(sentence: string): Promise<MecabJdeppParsed> {
 }
 
 const p = (x: any) => console.dir(x, {depth: null});
-type WithSearch<T> = T&{ search: string[]; };
+type WithSearchReading<T> = T&{ searchReading: string[]; };
+type WithSearchKanji<T> = T&{ searchKanji: string[]; };
 type ScoreHit = {
   word: Word,
   score: number,
@@ -45,20 +47,33 @@ export async function enumerateDictionaryHits(parsed: MecabJdeppParsed) {
   const {db} = await jmdictPromise;
 
   const jmdictFurigana = await jmdictFuriganaPromise;
-  const morphemes: WithSearch<Morpheme>[] = parsed.morphemes.map(
-      m => ({...m, search: unique(morphemeToSearchLemma(m).concat(morphemeToStringLiteral(m, jmdictFurigana)))}));
+  const morphemes: WithSearchKanji<WithSearchReading<Morpheme>>[] = parsed.morphemes.map(
+      m => ({
+        ...m,
+        searchKanji: [m.literal],
+        searchReading: unique(morphemeToSearchLemma(m).concat(morphemeToStringLiteral(m, jmdictFurigana)))
+      }));
 
   const superhits: ScoreHit[][][] = [];
   for (const [i, m] of morphemes.entries()) {
     const hits: ScoreHit[][] = [];
     for (let j = morphemes.length; j > i; --j) {
       const run = morphemes.slice(i, j);
-      const searches = forkingPaths(run.map(m => m.search)).map(v => v.join(''));
+      const readingSearches = forkingPaths(run.map(m => m.searchReading)).map(v => v.join(''));
+      const readingSubhits = flatten(await Promise.all(readingSearches.map(search => readingBeginning(db, search))));
 
-      const subhits = flatten(await Promise.all(searches.map(search => readingBeginning(db, search))));
-      const scored: ScoreHit[] = subhits.map(word => ({word, score: scoreMorphemeWord(run, searches, word), searches}));
-      // I want to see length matches first
-      // then kanji matches
+      const scored: ScoreHit[] = readingSubhits.map(
+          word => ({word, score: scoreMorphemeWord(run, readingSearches, 'kana', word), searches: readingSearches}));
+
+      // Search literals if needed, this works around MeCab mis-readings like お父さん->おちちさん
+      {
+        const kanjiSearches = run.map(m => m.searchKanji).join('');
+        const kanjiSubhits = hasKanji(kanjiSearches) ? await kanjiBeginning(db, kanjiSearches) : [];
+        scored.push(...kanjiSubhits.map(
+            word =>
+                ({word, score: scoreMorphemeWord(run, [kanjiSearches], 'kanji', word), searches: [kanjiSearches]})));
+      }
+
       scored.sort((a, b) => b.score - a.score);
       if (scored.length > 0) { hits.push(scored); }
     }
@@ -66,13 +81,13 @@ export async function enumerateDictionaryHits(parsed: MecabJdeppParsed) {
   }
   return superhits;
 }
-function scoreMorphemeWord(run: Morpheme[], searches: string[], word: Word): number {
-  const len = searches[0].length;
+function scoreMorphemeWord(run: Morpheme[], searches: string[], searchKey: 'kana'|'kanji', word: Word): number {
+  const len = searches[0].length; // all elements of `searches` have same length: differences only for chouonpu
   // if the shortest kana is shorter than the search, let the cost be 0. If shortest kana is longer than search, let the
-  // overrun cost be negative
-  const overrunPenalty = Math.min(
-      0, len - Math.min(
-                   ...word.kana.filter(k => searches.some(search => k.text.includes(search))).map(k => k.text.length)));
+  // overrun cost be negative. Shortest because we're being optimistic
+  const overrunPenalty = Math.min(0, len - Math.min(...word[searchKey]
+                                                        .filter(k => searches.some(search => k.text.includes(search)))
+                                                        .map(k => k.text.length)));
 
   // literal may contain kanji that lemma doesn't, e.g., 大阪's literal in UniDic is katakana
   const wordKanjis = new Set(flatten(word.kanji.map(k => k.text.split('').filter(hasKanji))));
@@ -118,6 +133,14 @@ export function displayWordDetailed(w: Word, tags: {[k: string]: string}) {
          ' #' + w.id;
 }
 
+/**
+ * Cartesian product.
+ *
+ * Treats each sub-array in an array of arrays as a list of choices for that slot, and enumerates all paths.
+ *
+ * So [['hi', 'ola'], ['Sal']] => [['hi', 'Sal'], ['ola', 'Sal']]
+ *
+ */
 function forkingPaths<T>(v: T[][]): T[][] {
   let ret: T[][] = [[]];
   for (const u of v) { ret = flatten(u.map(x => ret.map(v => v.concat(x)))); }
