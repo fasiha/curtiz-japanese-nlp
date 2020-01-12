@@ -41,7 +41,7 @@ type WithSearchKanji<T> = T&{ searchKanji: string[]; };
 type ScoreHit = {
   word: Word,
   score: number,
-  searches: string[],
+  search: string,
 };
 export async function enumerateDictionaryHits(parsed: MecabJdeppParsed) {
   const {db} = await jmdictPromise;
@@ -59,25 +59,32 @@ export async function enumerateDictionaryHits(parsed: MecabJdeppParsed) {
     const hits: ScoreHit[][] = [];
     for (let j = morphemes.length; j > i; --j) {
       const run = morphemes.slice(i, j);
-      const readingSearches = forkingPaths(run.map(m => m.searchReading)).map(v => v.join(''));
-      const readingSubhits = flatten(await Promise.all(readingSearches.map(search => readingBeginning(db, search))));
+      let scored: ScoreHit[] = [];
 
-      const scored: ScoreHit[] = readingSubhits.map(
-          word => ({word, score: scoreMorphemeWord(run, readingSearches, 'kana', word), searches: readingSearches}));
-
+      function helperSearchesHitsToScored(readingSearches: string[], readingSubhits: Word[][]): ScoreHit[] {
+        return flatten(
+            readingSubhits.map((v, i) => v.map(w => ({
+                                                 word: w,
+                                                 score: scoreMorphemeWord(run, readingSearches[i], 'kana', w),
+                                                 search: readingSearches[i]
+                                               }))));
+      }
+      // Search reading
+      {
+        const readingSearches = forkingPaths(run.map(m => m.searchReading)).map(v => v.join(''));
+        const readingSubhits = await Promise.all(readingSearches.map(search => readingBeginning(db, search)));
+        scored = helperSearchesHitsToScored(readingSearches, readingSubhits);
+      }
       // Search literals if needed, this works around MeCab mis-readings like お父さん->おちちさん
       {
         const kanjiSearches = forkingPaths(run.map(m => m.searchKanji)).map(v => v.join('')).filter(hasKanji);
-        const kanjiSubhits = flatten(await Promise.all(kanjiSearches.map(search => kanjiBeginning(db, search))));
+        const kanjiSubhits = await Promise.all(kanjiSearches.map(search => kanjiBeginning(db, search)));
         if (kanjiSubhits.length > 0) {
-          // dedupe a little bit at least
-          const ids = new Set(readingSubhits.slice(0, 100).map(o => o.id));
-          scored.push(...kanjiSubhits.filter(o => !ids.has(o.id)).map(word => ({
-                                                                        word,
-                                                                        score: scoreMorphemeWord(run, kanjiSearches,
-                                                                                                 'kanji', word),
-                                                                        searches: kanjiSearches
-                                                                      })));
+          // dedupe a little bit at least. This might be bad if a word was found with reading search above as well as
+          // kanji search here but the score for the kanji search is much higher than the reading search. In that case,
+          // the higher score will be discarded. FIXME
+          const ids = new Set(scored.slice(0, 100).map(o => o.word.id));
+          scored.push(...helperSearchesHitsToScored(kanjiSearches, kanjiSubhits).filter(h => !ids.has(h.word.id)));
         }
       }
 
@@ -105,17 +112,13 @@ function dedupe<T, U>(v: T[], f: (x: T) => U): T[] {
   }
   return ret;
 }
-function scoreMorphemeWord(run: Morpheme[], searches: string[], searchKey: 'kana'|'kanji', word: Word): number {
-  // for searchKey='kana', all elements of `searches` have same length: differences only for chouonpu.
-  // for 'kanji', that's no longer the case, but so few of those are expected that I'm not bothering to find a perfect
-  // solution FIXME
-  const len = searches[0].length;
+function scoreMorphemeWord(run: Morpheme[], searched: string, searchKey: 'kana'|'kanji', word: Word): number {
+  const len = searched.length;
 
   // if the shortest kana is shorter than the search, let the cost be 0. If shortest kana is longer than search, let the
   // overrun cost be negative. Shortest because we're being optimistic
-  const overrunPenalty = Math.min(0, len - Math.min(...word[searchKey]
-                                                        .filter(k => searches.some(search => k.text.includes(search)))
-                                                        .map(k => k.text.length)));
+  const overrunPenalty =
+      Math.min(0, len - Math.min(...word[searchKey].filter(k => k.text.includes(searched)).map(k => k.text.length)));
 
   // literal may contain kanji that lemma doesn't, e.g., 大阪's literal in UniDic is katakana
   const wordKanjis = new Set(flatten(word.kanji.map(k => k.text.split('').filter(hasKanji))));
@@ -522,7 +525,7 @@ if (module === require.main) {
           const res = await enumerateDictionaryHits(parsed);
           for (const fromStart of res) {
             for (const fromEnd of fromStart) {
-              console.log('  - end: ' + ((fromEnd[0] && fromEnd[0].searches.join('・')) || ''));
+              console.log('  - end: ' + unique(fromEnd.map(o => o.search)).join('・'));
               for (const w of fromEnd.slice(0, MAX_LINES)) {
                 console.log('    - @dict ' + displayWordDetailed(w.word, tags) + ` (score: ${w.score})`);
               }
