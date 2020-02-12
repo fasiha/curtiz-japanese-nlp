@@ -50,10 +50,10 @@ export async function enumerateDictionaryHits(parsed: MecabJdeppParsed) {
   const morphemes: WithSearchKanji<WithSearchReading<Morpheme>>[] = parsed.morphemes.map(
       m => ({
         ...m,
-        searchKanji: unique([m.literal, m.lemma]),
+        // if "symbol" POS, don't needlessly double the number of things to search for later in forkingPaths
+        searchKanji: unique(m.partOfSpeech[0].startsWith('symbol') ? [m.literal] : [m.literal, m.lemma]),
         searchReading: unique(morphemeToSearchLemma(m).concat(morphemeToStringLiteral(m, jmdictFurigana)))
       }));
-
   const superhits: ScoreHit[][][] = [];
   for (const [i, m] of morphemes.entries()) {
     const hits: ScoreHit[][] = [];
