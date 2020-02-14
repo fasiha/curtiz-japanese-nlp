@@ -251,11 +251,8 @@ async function identifyFillInBlanks(bunsetsus: Morpheme[][]) {
             })
           });
         }
-        // if we found a bunsetsu to study, don't search for particles *inside* it!
-        continue;
       }
     }
-    // only add particles if they're NOT inside conjugated phrases
     const particlePredicate = (p: Morpheme) => p.partOfSpeech[0].startsWith('particle') && p.partOfSpeech.length > 1 &&
                                                !p.partOfSpeech[1].startsWith('phrase_final');
     for (const [pidx, particle] of bunsetsu.entries()) {
