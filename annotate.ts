@@ -149,7 +149,7 @@ function intersectionSize<T>(small: Set<T>, big: Set<T>): number {
 }
 function unique<T>(v: T[]): T[] { return [...new Set(v)]; }
 
-const circledNumbers = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳".split('');
+const circledNumbers = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿".split('');
 const prefixNumber = (n: number) => circledNumbers[n] || '⓪';
 export function displayWord(w: Word) {
   return w.kanji.map(k => k.text).join('・') + '「' + w.kana.map(k => k.text).join('・') + '」：' +
