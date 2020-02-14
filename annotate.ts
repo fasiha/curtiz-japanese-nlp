@@ -448,16 +448,22 @@ function search(map: JmdictFurigana['readingToEntry'], first: string, sub: 'read
     console.error(`found hit for ${first} but not ${possibleSeconds}`, {hit, possibleSeconds});
   }
 }
-// function morphemeToReading(m: Morpheme): string {
-//   if (!hasKanji(m.literal)) { return m.literal; }
-//   const ret = kata2hira(m.literal === m.lemma ? m.lemmaReading : m.pronunciation);
-//   if (!ret.includes(CHOUONPU)) { return ret; }
-//   const alts = findAlternativeChouonpu(ret);
-//   return alts[1] || ret;
-// }
 
 function furiganaToRuby(fs: Furigana[]): string {
   return fs.map(f => typeof f === 'string' ? f : `<ruby>${f.ruby}<rt>${f.rt}</rt></ruby>`).join('');
+}
+
+export async function analyzeSentence(sentence: string, overrides: Map<string, Furigana[]>,
+                                      jmdictFuriganaPromise: Promise<JmdictFurigana>) {
+  const parsed = await mecabJdepp(sentence);
+  const jmdictFurigana = await jmdictFuriganaPromise;
+  const furigana =
+      hasKanji(sentence)
+          ? (await morphemesToFurigana(parsed.morphemes, overrides, jmdictFurigana)).map(furiganaToRuby).join('')
+          : '';
+  const particlesConjphrases = await identifyFillInBlanks(parsed.bunsetsus);
+  const dictionaryHits = await enumerateDictionaryHits(parsed);
+  return {furigana, particlesConjphrases, dictionaryHits};
 }
 
 if (module === require.main) {
@@ -491,26 +497,20 @@ if (module === require.main) {
           continue;
         }
         const sentence = line.slice(line.match(startRegexp) ?.[0].length );
-        const parsed = await mecabJdepp(sentence);
-        const furigana = hasKanji(sentence)
-                             ? ' @furigana ' + (await morphemesToFurigana(parsed.morphemes, overrides, jmdictFurigana))
-                                                   .map(furiganaToRuby)
-                                                   .join('')
-                             : '';
-        console.log(line + furigana);
+        const results = await analyzeSentence(sentence, overrides, jmdictFuriganaPromise);
+        console.log(line + (results.furigana ? ` @furigana ${results.furigana}` : ''));
 
         {
-          const res = await identifyFillInBlanks(parsed.bunsetsus);
-          if (res.particles.size) {
+          if (results.particlesConjphrases.particles.size) {
             console.log('  - Particles');
-            for (const [_, cloze] of res.particles) {
+            for (const [_, cloze] of results.particlesConjphrases.particles) {
               console.log(`    - @fill ${cloze.left}${
                   cloze.left || cloze.right ? '[' + cloze.cloze + ']' : cloze.cloze}${cloze.right}`);
             }
           }
-          if (res.conjugatedPhrases.size) {
+          if (results.particlesConjphrases.conjugatedPhrases.size) {
             console.log('  - Conjugated phrases');
-            for (const [_, c] of res.conjugatedPhrases) {
+            for (const [_, c] of results.particlesConjphrases.conjugatedPhrases) {
               const cloze = c.cloze;
               console.log(`    - @fill ${cloze.left}${
                   cloze.left || cloze.right ? '[' + cloze.cloze + ']'
@@ -519,8 +519,7 @@ if (module === require.main) {
           }
         }
         {
-          const res = await enumerateDictionaryHits(parsed);
-          for (const fromStart of res) {
+          for (const fromStart of results.dictionaryHits) {
             for (const fromEnd of fromStart) {
               console.log('  - end: ' + unique(fromEnd.map(o => o.search)).join('・'));
               for (const w of fromEnd.slice(0, MAX_LINES)) {
