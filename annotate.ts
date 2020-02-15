@@ -3,11 +3,10 @@ import {promises as pfs} from 'fs';
 import {Entry, Furigana, furiganaToString, JmdictFurigana, setup as setupJmdictFurigana} from 'jmdict-furigana-node';
 import {
   getField,
+  idsToWords,
   kanjiBeginning,
-  readingAnywhere,
   readingBeginning,
   setup as setupJmdict,
-  Simplified,
   Word
 } from 'jmdict-simplified-node';
 
@@ -39,7 +38,7 @@ const p = (x: any) => console.dir(x, {depth: null});
 type WithSearchReading<T> = T&{ searchReading: string[]; };
 type WithSearchKanji<T> = T&{ searchKanji: string[]; };
 export type ScoreHit = {
-  word: Word,
+  wordId: Word['id'],
   score: number,
   search: string,
 };
@@ -70,7 +69,7 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[]): Promi
         searchReading: unique(morphemeToSearchLemma(m).concat(morphemeToStringLiteral(m, jmdictFurigana)))
       }));
   const superhits: ScoreHit[][][] = [];
-  for (const [i, m] of morphemes.entries()) {
+  for (let i = 0; i < morphemes.length; i++) {
     const hits: ScoreHit[][] = [];
     for (let j = morphemes.length; j > i; --j) {
       const run = morphemes.slice(i, j);
@@ -79,7 +78,7 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[]): Promi
       function helperSearchesHitsToScored(readingSearches: string[], readingSubhits: Word[][]): ScoreHit[] {
         return flatten(
             readingSubhits.map((v, i) => v.map(w => ({
-                                                 word: w,
+                                                 wordId: w.id,
                                                  score: scoreMorphemeWord(run, readingSearches[i], 'kana', w),
                                                  search: readingSearches[i]
                                                }))));
@@ -94,36 +93,32 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[]): Promi
       {
         const kanjiSearches = forkingPaths(run.map(m => m.searchKanji)).map(v => v.join('')).filter(hasKanji);
         const kanjiSubhits = await Promise.all(kanjiSearches.map(search => kanjiBeginning(db, search)));
-        if (kanjiSubhits.length > 0) {
-          // dedupe a little bit at least. This might be bad if a word was found with reading search above as well as
-          // kanji search here but the score for the kanji search is much higher than the reading search. In that case,
-          // the higher score will be discarded. FIXME
-          const ids = new Set(scored.slice(0, 100).map(o => o.word.id));
-          scored.push(...helperSearchesHitsToScored(kanjiSearches, kanjiSubhits).filter(h => !ids.has(h.word.id)));
-        }
+        scored.push(...helperSearchesHitsToScored(kanjiSearches, kanjiSubhits));
       }
 
       scored.sort((a, b) => b.score - a.score);
-      if (scored.length > 0) { hits.push(scored); }
+      if (scored.length > 0) { hits.push(dedupe(scored, o => o.wordId)); }
     }
     superhits.push(hits);
   }
   return superhits;
 }
 /**
- * Remove adjacent duplicates given a predicate
+ * Remove duplicates given a function mapping elements to a unique ID
+ *
+ * Examples:
+ * `dedupe([1, 2, 3, 2, 1], x => x)` returns `[1, 2, 3]`
+ * `dedupe([1, -1, 2, -2, -3, -4, 3, 4], x => x**2)` returns `[1, 2, -3, -4]`.
  */
-function dedupe<T, U>(v: T[], f: (x: T) => U): T[] {
-  if (v.length === 0) { return []; }
-  const ret: T[] = [v[0]];
-  let old = f(v[0]);
-  // Use the iterator here instead of v.slice(1) because that makes a copy of most of the array, which annoys me
-  const iterator = v.values();
-  iterator.next();
-  for (const x of iterator) {
-    const notOld = f(x)
-    if (old !== notOld) { ret.push(x); }
-    old = notOld;
+function dedupe<T, U>(v: T[], f: (x: T, i: number, arr: T[]) => U): T[] {
+  const seen: Set<U> = new Set();
+  const ret: T[] = [];
+  for (const [i, x] of v.entries()) {
+    const y = f(x, i, v);
+    if (!seen.has(y)) {
+      ret.push(x);
+      seen.add(y);
+    }
   }
   return ret;
 }
@@ -496,6 +491,11 @@ export async function analyzeSentence(sentence: string, overrides?: Map<string, 
   return {furigana, particlesConjphrases, dictionaryHits};
 }
 
+export async function scoreHitsToWords(hits: ScoreHit[]) {
+  const {db} = await jmdictPromise;
+  return idsToWords(db, hits.map(o => o.wordId));
+}
+
 if (module === require.main) {
   (async () => {
     const jmdictFurigana = await jmdictFuriganaPromise;
@@ -552,8 +552,9 @@ if (module === require.main) {
           for (const fromStart of results.dictionaryHits) {
             for (const fromEnd of fromStart) {
               console.log('  - end: ' + unique(fromEnd.map(o => o.search)).join('・'));
-              for (const w of fromEnd.slice(0, MAX_LINES)) {
-                console.log('    - @dict ' + displayWordDetailed(w.word, tags) + ` (score: ${w.score})`);
+              const words = await scoreHitsToWords(fromEnd.slice(0, MAX_LINES));
+              for (const [wi, w] of words.entries()) {
+                console.log('    - @dict ' + displayWordDetailed(w, tags) + ` (score: ${fromEnd[wi].score})`);
               }
               if (fromEnd.length > MAX_LINES) { console.log(`    - (… ${fromEnd.length - MAX_LINES} omitted)`); }
             }
