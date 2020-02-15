@@ -38,16 +38,31 @@ export async function mecabJdepp(sentence: string): Promise<MecabJdeppParsed> {
 const p = (x: any) => console.dir(x, {depth: null});
 type WithSearchReading<T> = T&{ searchReading: string[]; };
 type WithSearchKanji<T> = T&{ searchKanji: string[]; };
-type ScoreHit = {
+export type ScoreHit = {
   word: Word,
   score: number,
   search: string,
 };
-export async function enumerateDictionaryHits(parsed: MecabJdeppParsed) {
+/**
+ * Given MeCab morphemes, return a triply-nested array of JMDict hits.
+ *
+ * The outer-most layer enumerates the *starting* morpheme, the middle layer the ending morpheme, and the final
+ * inner-most layer the list of dictionary hits for the sequence of morphemes between the start and end.
+ *
+ * Roughly, in code (except we might not find anything for all start-to-end sequences):
+ * ```js
+ * for (let startIdx = 0; startIdx < morphemes.length; startIdx++) {
+ *  for (let endIdx = morphemes.length; endIdx > startIdx; endIdx--) {
+ *    result.push(JMDict.search(morpehemes.slice(startIdx, endIdx)));
+ *  }
+ * }
+ * ```
+ */
+export async function enumerateDictionaryHits(plainMorphemes: Morpheme[]): Promise<ScoreHit[][][]> {
   const {db} = await jmdictPromise;
 
   const jmdictFurigana = await jmdictFuriganaPromise;
-  const morphemes: WithSearchKanji<WithSearchReading<Morpheme>>[] = parsed.morphemes.map(
+  const morphemes: WithSearchKanji<WithSearchReading<Morpheme>>[] = plainMorphemes.map(
       m => ({
         ...m,
         // if "symbol" POS, don't needlessly double the number of things to search for later in forkingPaths
@@ -218,11 +233,15 @@ function generateContextClozed(left: string, cloze: string, right: string): Cont
   return {left: leftContext, cloze, right: rightContext};
 }
 const bunsetsuToString = (morphemes: Morpheme[]) => morphemes.map(m => m.literal).join('');
-interface ConjugatedPhrase {
+export interface ConjugatedPhrase {
   cloze: ContextCloze;
   lemmas: Furigana[][];
 }
-async function identifyFillInBlanks(bunsetsus: Morpheme[][]) {
+export interface FillInTheBlanks {
+  particles: Map<string, ContextCloze>;
+  conjugatedPhrases: Map<string, ConjugatedPhrase>;
+}
+async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<FillInTheBlanks> {
   // Find clozes: particles and conjugated verb/adjective phrases
   // const literalClozes: Map<string, Morpheme[]> = new Map([]);
   const conjugatedPhrases: Map<string, ConjugatedPhrase> = new Map();
@@ -370,8 +389,13 @@ const DUMB_CHOUONPU_MAP = (function makeChouonpuMap() {
   return m;
 })();
 
-async function morphemesToFurigana(morphemes: Morpheme[], overrides: Map<string, Furigana[]>,
-                                   jmdictFurigana: JmdictFurigana): Promise<Furigana[][]> {
+/**
+ * Try very hard to convert morphemes to furigana. `overrides` is a map of morpheme literal to the furigana you want.
+ * This is useful because, e.g., Unidic always converts 日本 to ニッポン, and maybe you want overrides such that:
+ * `overrides = new Map([['日本', [{ruby: '日', rt: 'に'}, {ruby: '本', rt: 'ほん'}]]])`
+ * Note that `overrides` operates on a morpheme-by-morpheme basis.
+ */
+async function morphemesToFurigana(morphemes: Morpheme[], overrides: Map<string, Furigana[]>): Promise<Furigana[][]> {
   const furigana: Furigana[][] = await Promise.all(morphemes.map(async m => {
     const {lemma, lemmaReading, literal, pronunciation} = m;
     if (hasKanji(literal)) {
@@ -380,6 +404,7 @@ async function morphemesToFurigana(morphemes: Morpheme[], overrides: Map<string,
         if (hit) { return hit; }
       }
 
+      const jmdictFurigana = await jmdictFuriganaPromise;
       const {textToEntry, readingToEntry} = jmdictFurigana;
 
       const literalHit = search(textToEntry, literal, 'reading', morphemeToStringLiteral(m, jmdictFurigana));
@@ -453,16 +478,21 @@ function furiganaToRuby(fs: Furigana[]): string {
   return fs.map(f => typeof f === 'string' ? f : `<ruby>${f.ruby}<rt>${f.rt}</rt></ruby>`).join('');
 }
 
-export async function analyzeSentence(sentence: string, overrides: Map<string, Furigana[]>,
-                                      jmdictFuriganaPromise: Promise<JmdictFurigana>) {
+export interface AnalysisResult {
+  furigana?: Furigana[][];
+  particlesConjphrases: FillInTheBlanks;
+  dictionaryHits: ScoreHit[][][];
+}
+export async function analyzeSentence(sentence: string, overrides?: Map<string, Furigana[]>): Promise<AnalysisResult> {
   const parsed = await mecabJdepp(sentence);
-  const jmdictFurigana = await jmdictFuriganaPromise;
-  const furigana =
-      hasKanji(sentence)
-          ? (await morphemesToFurigana(parsed.morphemes, overrides, jmdictFurigana)).map(furiganaToRuby).join('')
-          : '';
-  const particlesConjphrases = await identifyFillInBlanks(parsed.bunsetsus);
-  const dictionaryHits = await enumerateDictionaryHits(parsed);
+
+  // Promises
+  const furiganaP = hasKanji(sentence) ? (morphemesToFurigana(parsed.morphemes, overrides || new Map())) : undefined;
+  const particlesConjphrasesP = identifyFillInBlanks(parsed.bunsetsus);
+  const dictionaryHitsP = enumerateDictionaryHits(parsed.morphemes);
+
+  const [furigana, particlesConjphrases, dictionaryHits] =
+      await Promise.all([furiganaP, particlesConjphrasesP, dictionaryHitsP]);
   return {furigana, particlesConjphrases, dictionaryHits};
 }
 
@@ -497,8 +527,8 @@ if (module === require.main) {
           continue;
         }
         const sentence = line.slice(line.match(startRegexp) ?.[0].length );
-        const results = await analyzeSentence(sentence, overrides, jmdictFuriganaPromise);
-        console.log(line + (results.furigana ? ` @furigana ${results.furigana}` : ''));
+        const results = await analyzeSentence(sentence, overrides);
+        console.log(line + (results.furigana ? ` @furigana ${results.furigana.map(furiganaToRuby).join('')}` : ''));
 
         {
           if (results.particlesConjphrases.particles.size) {
