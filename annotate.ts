@@ -10,6 +10,7 @@ import {
   Word
 } from 'jmdict-simplified-node';
 
+import {AnalysisResult, ConjugatedPhrase, ContextCloze, FillInTheBlanks, ScoreHit} from './interfaces';
 import {addJdepp} from './jdepp';
 import {
   goodMorphemePredicate,
@@ -37,11 +38,6 @@ export async function mecabJdepp(sentence: string): Promise<MecabJdeppParsed> {
 const p = (x: any) => console.dir(x, {depth: null});
 type WithSearchReading<T> = T&{ searchReading: string[]; };
 type WithSearchKanji<T> = T&{ searchKanji: string[]; };
-export type ScoreHit = {
-  wordId: Word['id'],
-  score: number,
-  search: string,
-};
 /**
  * Given MeCab morphemes, return a triply-nested array of JMDict hits.
  *
@@ -198,11 +194,6 @@ function appearsExactlyOnce(haystack: string, needle: string): boolean {
   return hit >= 0 && haystack.indexOf(needle, hit + 1) < 0;
 }
 
-interface ContextCloze {
-  left: string;
-  cloze: string;
-  right: string;
-}
 function contextClozeToString(c: ContextCloze): string { return c.left + c.cloze + c.right; }
 /**
  * Given three consecutive substrings (the arguments), return `{left: left2, cloze, right: right2}` where
@@ -228,14 +219,6 @@ function generateContextClozed(left: string, cloze: string, right: string): Cont
   return {left: leftContext, cloze, right: rightContext};
 }
 const bunsetsuToString = (morphemes: Morpheme[]) => morphemes.map(m => m.literal).join('');
-export interface ConjugatedPhrase {
-  cloze: ContextCloze;
-  lemmas: Furigana[][];
-}
-export interface FillInTheBlanks {
-  particles: Map<string, ContextCloze>;
-  conjugatedPhrases: Map<string, ConjugatedPhrase>;
-}
 async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<FillInTheBlanks> {
   // Find clozes: particles and conjugated verb/adjective phrases
   // const literalClozes: Map<string, Morpheme[]> = new Map([]);
@@ -473,11 +456,6 @@ function furiganaToRuby(fs: Furigana[]): string {
   return fs.map(f => typeof f === 'string' ? f : `<ruby>${f.ruby}<rt>${f.rt}</rt></ruby>`).join('');
 }
 
-export interface AnalysisResult {
-  furigana?: Furigana[][];
-  particlesConjphrases: FillInTheBlanks;
-  dictionaryHits: ScoreHit[][][];
-}
 export async function analyzeSentence(sentence: string, overrides?: Map<string, Furigana[]>): Promise<AnalysisResult> {
   const parsed = await mecabJdepp(sentence);
 
