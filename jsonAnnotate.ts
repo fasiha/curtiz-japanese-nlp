@@ -1,6 +1,6 @@
 import {dedupe, flatten} from 'curtiz-utils';
 
-import {analyzeSentence, scoreHitsToWords} from './annotate';
+import {analyzeSentence, getTags, scoreHitsToWords} from './annotate';
 
 (
     async function main() {
@@ -13,6 +13,6 @@ Rap Game 頂く王冠`.trim().split('\n');
       const words =
           dedupe(flatten(await Promise.all(analysis.map(o => scoreHitsToWords(flatten(flatten(o.dictionaryHits)))))),
                  o => o.id);
-
-      console.log(JSON.stringify({analysis, words}, null, 1));
+      const tags = getTags();
+      console.log(JSON.stringify({analysis, words, tags}, null, 1));
     })();

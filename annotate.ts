@@ -3,11 +3,12 @@ import {promises as pfs} from 'fs';
 import {Entry, Furigana, furiganaToString, JmdictFurigana, setup as setupJmdictFurigana} from 'jmdict-furigana-node';
 import {
   getField,
+  getTags as getTagsDb,
   idsToWords,
   kanjiBeginning,
   readingBeginning,
   setup as setupJmdict,
-  Word
+  Word,
 } from 'jmdict-simplified-node';
 
 import {AnalysisResult, ConjugatedPhrase, ContextCloze, FillInTheBlanks, ScoreHit} from './interfaces';
@@ -454,6 +455,8 @@ export async function scoreHitsToWords(hits: ScoreHit[]) {
   const {db} = await jmdictPromise;
   return idsToWords(db, hits.map(o => o.wordId));
 }
+
+export async function getTags() { return jmdictPromise.then(({db}) => getTagsDb(db)) }
 
 if (module === require.main) {
   (async () => {

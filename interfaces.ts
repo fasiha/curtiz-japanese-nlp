@@ -1,6 +1,17 @@
 import {Furigana} from "jmdict-furigana-node";
 import {Word} from "jmdict-simplified-node/interfaces";
 
+export {Furigana, Ruby} from "jmdict-furigana-node";
+export {
+  Gloss,
+  Kana,
+  Kanji,
+  Sense,
+  Source,
+  Word,
+  Xref,
+} from "jmdict-simplified-node/interfaces";
+
 export interface ScoreHit {
   wordId: Word['id'];
   score: number;
