@@ -138,13 +138,13 @@ function intersectionSize<T>(small: Set<T>, big: Set<T>): number {
 function unique<T>(v: T[]): T[] { return [...new Set(v)]; }
 
 const circledNumbers = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿".split('');
-const prefixNumber = (n: number) => circledNumbers[n] || '⓪';
+const prefixNumber = (n: number) => circledNumbers[n] || `(${n + 1})`;
 export function displayWord(w: Word) {
   return w.kanji.map(k => k.text).join('・') + '「' + w.kana.map(k => k.text).join('・') + '」：' +
          w.sense.map((sense, n) => prefixNumber(n) + ' ' + sense.gloss.map(gloss => gloss.text).join('/')).join('; ');
 }
 export function displayWordDetailed(w: Word, tags: {[k: string]: string}) {
-  return w.kanji.map(k => k.text).join('・') + '「' + w.kana.map(k => k.text).join('・') + '」：' +
+  return w.kanji.concat(w.kana).map(k => k.text).join('・') + '：' +
          w.sense
              .map((sense, n) => prefixNumber(n) + ' ' + sense.gloss.map(gloss => gloss.text).join('/') + ' {*' +
                                 sense.partOfSpeech.map(pos => tags[pos]).join('; ') + '*}')
