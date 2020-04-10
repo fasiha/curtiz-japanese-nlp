@@ -3,3 +3,8 @@ JmdictFurigana.txt*
 
 *.tsbuildinfo
 *.txt
+*.map
+*.md
+*.js
+*.json
+*.zip

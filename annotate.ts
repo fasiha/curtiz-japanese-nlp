@@ -56,6 +56,7 @@ type WithSearchKanji<T> = T&{ searchKanji: string[]; };
  */
 export async function enumerateDictionaryHits(plainMorphemes: Morpheme[]): Promise<ScoreHit[][][]> {
   const {db} = await jmdictPromise;
+  const simplify = (c: ContextCloze) => (c.left || c.right) ? c : c.cloze;
 
   const jmdictFurigana = await jmdictFuriganaPromise;
   const morphemes: WithSearchKanji<WithSearchReading<Morpheme>>[] = plainMorphemes.map(
@@ -70,6 +71,8 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[]): Promi
     const hits: ScoreHit[][] = [];
     for (let j = morphemes.length; j > i; --j) {
       const run = morphemes.slice(i, j);
+      const runLiteral = simplify(generateContextClozed(bunsetsuToString(morphemes.slice(0, i)), bunsetsuToString(run),
+                                                        bunsetsuToString(morphemes.slice(j))));
       let scored: ScoreHit[] = [];
 
       function helperSearchesHitsToScored(readingSearches: string[], readingSubhits: Word[][]): ScoreHit[] {
@@ -77,7 +80,8 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[]): Promi
             readingSubhits.map((v, i) => v.map(w => ({
                                                  wordId: w.id,
                                                  score: scoreMorphemeWord(run, readingSearches[i], 'kana', w),
-                                                 search: readingSearches[i]
+                                                 search: readingSearches[i],
+                                                 run: runLiteral,
                                                }))));
       }
       // Search reading
@@ -203,7 +207,6 @@ function generateContextClozed(left: string, cloze: string, right: string): Cont
 const bunsetsuToString = (morphemes: Morpheme[]) => morphemes.map(m => m.literal).join('');
 async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<FillInTheBlanks> {
   // Find clozes: particles and conjugated verb/adjective phrases
-  // const literalClozes: Map<string, Morpheme[]> = new Map([]);
   const conjugatedPhrases: Map<string, ConjugatedPhrase> = new Map();
   const particles: Map<string, ContextCloze> = new Map();
   for (const [bidx, bunsetsu] of bunsetsus.entries()) {
