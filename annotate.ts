@@ -76,13 +76,16 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[]): Promi
       let scored: ScoreHit[] = [];
 
       function helperSearchesHitsToScored(readingSearches: string[], readingSubhits: Word[][]): ScoreHit[] {
-        return flatten(
-            readingSubhits.map((v, i) => v.map(w => ({
-                                                 wordId: w.id,
-                                                 score: scoreMorphemeWord(run, readingSearches[i], 'kana', w),
-                                                 search: readingSearches[i],
-                                                 run: runLiteral,
-                                               }))));
+        return flatten(readingSubhits.map((v, i) => v.map(w => {
+          // help catch issues with automatic type widening and excess property checks
+          const ret: ScoreHit = {
+            wordId: w.id,
+            score: scoreMorphemeWord(run, readingSearches[i], 'kana', w),
+            search: readingSearches[i],
+            run: runLiteral,
+          };
+          return ret;
+        })));
       }
       // Search reading
       {
@@ -147,6 +150,12 @@ export function displayWord(w: Word) {
   return w.kanji.map(k => k.text).join('・') + '「' + w.kana.map(k => k.text).join('・') + '」：' +
          w.sense.map((sense, n) => prefixNumber(n) + ' ' + sense.gloss.map(gloss => gloss.text).join('/')).join('; ');
 }
+export function displayWordLight(w: Word) {
+  const kanji = w.kanji.map(k => k.text).join('・');
+  const kana = w.kana.map(k => k.text).join('・')
+  const s = w.sense.map((sense, n) => prefixNumber(n) + ' ' + sense.gloss.map(gloss => gloss.text).join('/')).join(' ');
+  return `${kanji}「${kana}」| ${s}`;
+}
 export function displayWordDetailed(w: Word, tags: {[k: string]: string}) {
   return w.kanji.concat(w.kana).map(k => k.text).join('・') + '：' +
          w.sense
@@ -180,7 +189,6 @@ function appearsExactlyOnce(haystack: string, needle: string): boolean {
   return hit >= 0 && haystack.indexOf(needle, hit + 1) < 0;
 }
 
-function contextClozeToString(c: ContextCloze): string { return c.left + c.cloze + c.right; }
 /**
  * Given three consecutive substrings (the arguments), return `{left: left2, cloze, right: right2}` where
  * `left2` and `right2` are as short as possible and `${left2}${cloze}${right2}` is unique in the full string.
@@ -244,7 +252,7 @@ async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<FillInTheB
         const right =
             bunsetsuToString(bunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
         const cloze = generateContextClozed(left, particle.literal, right);
-        particles.set(contextClozeToString(cloze), cloze);
+        particles.set(cloze.left + cloze.cloze + cloze.right, cloze);
       }
     }
   }
@@ -461,15 +469,23 @@ export async function scoreHitsToWords(hits: ScoreHit[]) {
 
 export async function getTags() { return jmdictPromise.then(({db}) => getTagsDb(db)) }
 
+export function contextClozeToString(c: ContextCloze): string {
+  return (c.left || c.right) ? `${c.left}[${c.cloze}]${c.right}` : c.cloze;
+}
+export function contextClozeOrStringToString(c: ContextCloze|string): string {
+  return typeof c === 'string' ? c : contextClozeToString(c);
+}
+
 if (module === require.main) {
   (async () => {
-    const jmdictFurigana = await jmdictFuriganaPromise;
     const {db} = await jmdictPromise;
     const tags = JSON.parse(await getField(db, 'tags'));
 
     {
       let lines = `- @ 今日は良い天気だ。
+
 - @ たのしいですか。
+
 - @ 何できた？`.split('\n');
       if (process.argv.length <= 2) {
         const getStdin = require('get-stdin');
@@ -482,7 +498,6 @@ if (module === require.main) {
                         s => s.trim().replace(/\r/g, '').split('\n'));
       }
 
-      // const lines = (await pfs.readFile('tono.txt', 'utf8')).trim().split('\n').map(s => s.split('\t')[0]);
       const MAX_LINES = 8;
       const overrides: Map<string, Furigana[]> = new Map();
       const startRegexp = /^-\s+@\s+/;
@@ -493,35 +508,34 @@ if (module === require.main) {
         }
         const sentence = line.slice(line.match(startRegexp) ?.[0].length );
         const results = await analyzeSentence(sentence, overrides);
-        console.log(line + (results.furigana ? ` @furigana ${results.furigana.map(furiganaToRuby).join('')}` : ''));
+        console.log(results.furigana ? '- @ ' + results.furigana.map(furiganaToRuby).join('') : line);
 
         {
           if (results.particlesConjphrases.particles.size) {
             console.log('  - Particles');
             for (const [_, cloze] of results.particlesConjphrases.particles) {
-              console.log(`    - @fill ${cloze.left}${
-                  cloze.left || cloze.right ? '[' + cloze.cloze + ']' : cloze.cloze}${cloze.right}`);
+              console.log(`    - ${cloze.left}${cloze.left || cloze.right ? '[' + cloze.cloze + ']' : cloze.cloze}${
+                  cloze.right}`);
             }
           }
           if (results.particlesConjphrases.conjugatedPhrases.size) {
             console.log('  - Conjugated phrases');
             for (const [_, c] of results.particlesConjphrases.conjugatedPhrases) {
               const cloze = c.cloze;
-              console.log(`    - @fill ${cloze.left}${
-                  cloze.left || cloze.right ? '[' + cloze.cloze + ']'
-                                            : cloze.cloze}${cloze.right} @hint ${furiganaToRuby(c.lemmas[0])}`);
+              console.log(`    - ${contextClozeToString(cloze)} | ${furiganaToRuby(c.lemmas[0])}`);
             }
           }
         }
         {
+          console.log('  - Vocab');
           for (const fromStart of results.dictionaryHits) {
             for (const fromEnd of fromStart) {
-              console.log('  - end: ' + unique(fromEnd.map(o => o.search)).join('・'));
-              const words = await scoreHitsToWords(fromEnd.slice(0, MAX_LINES));
+              const hits = fromEnd.slice(0, MAX_LINES);
+              const words = await scoreHitsToWords(hits);
               for (const [wi, w] of words.entries()) {
-                console.log('    - @dict ' + displayWordDetailed(w, tags) + ` (score: ${fromEnd[wi].score})`);
+                console.log('    - ' + contextClozeOrStringToString(hits[wi].run) + ' | ' + displayWordLight(w));
               }
-              if (fromEnd.length > MAX_LINES) { console.log(`    - (… ${fromEnd.length - MAX_LINES} omitted)`); }
+              if (fromEnd.length > MAX_LINES) { console.log(`    - (… ${fromEnd.length - MAX_LINES} omitted) INFO`); }
             }
           }
         }
