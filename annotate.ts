@@ -560,6 +560,7 @@ if (module === require.main) {
           console.log('  - Vocab');
           for (const fromStart of results.dictionaryHits) {
             for (const fromEnd of fromStart) {
+              console.log(`  - Vocab: ${fromEnd[0].search} INFO`);
               const hits = fromEnd.slice(0, MAX_LINES);
               const words = await scoreHitsToWords(hits);
               for (const [wi, w] of words.entries()) {
