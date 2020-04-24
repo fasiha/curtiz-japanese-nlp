@@ -160,12 +160,12 @@ export function displayWordLight(w: Word, tags: Record<string, string>) {
   const kana = w.kana.map(k => k.text).join('・');
 
   type TagKey = {[K in keyof Sense]: Sense[K] extends Tag[] ? K : never}[keyof Sense];
-  const tagFields: Partial<Record<TagKey, string>> = {dialect: '🗣', field: '🀄️', misc: '👉'};
+  const tagFields: Partial<Record<TagKey, string>> = {dialect: '🗣', field: '🀄️', misc: '✋'};
   const s =
       w.sense
           .map((sense, n) => prefixNumber(n) + ' ' + sense.gloss.map(gloss => gloss.text).join('/') +
-                             (sense.related.length ? ` (→ ${printXrefs(sense.related)})` : '') +
-                             (sense.antonym.length ? ` (← ${printXrefs(sense.antonym)})` : '') +
+                             (sense.related.length ? ` (👉 ${printXrefs(sense.related)})` : '') +
+                             (sense.antonym.length ? ` (👈 ${printXrefs(sense.antonym)})` : '') +
                              Object.entries(tagFields)
                                  .map(([k, v]) => sense[k as TagKey].length
                                                       ? ` (${v}${sense[k as TagKey].map(k => tags[k]).join('; ')})`
