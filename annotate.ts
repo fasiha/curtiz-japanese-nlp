@@ -457,10 +457,31 @@ export async function analyzeSentence(sentence: string, overrides?: Map<string, 
   const particlesConjphrasesP = identifyFillInBlanks(parsed.bunsetsus);
   const dictionaryHitsP = enumerateDictionaryHits(parsed.morphemes);
 
-  const [furigana, particlesConjphrases, dictionaryHits] =
+  let [furigana, particlesConjphrases, dictionaryHits] =
       await Promise.all([furiganaP, particlesConjphrasesP, dictionaryHitsP]);
+
+  // make sure we furigana's rubys are verbatim the sentence
+  if (furigana) {
+    const rubys = flatten(furigana).map(toruby);
+    if (rubys.join('').length < sentence.length) {
+      // whitespace or some other character was stripped. add it back!
+      let start = 0;
+      let ret: Furigana[][] = [];
+      for (const fs of furigana) {
+        const chunk = fs.map(toruby).join('');
+        const hit = sentence.indexOf(chunk, start);
+        if (hit < 0) { throw new Error('cannot find: ' + chunk); }
+        ret.push(hit > start ? [sentence.slice(start, hit), ...fs] : fs);
+        // prepending the holes like this will keep the same number of morphemes in `furigana`
+        start = hit + chunk.length;
+      }
+      // overwrite
+      furigana = ret;
+    }
+  }
   return {furigana, particlesConjphrases, dictionaryHits};
 }
+function toruby(f: Furigana) { return typeof f === 'string' ? f : f.ruby; }
 
 export async function scoreHitsToWords(hits: ScoreHit[]) {
   const {db} = await jmdictPromise;
