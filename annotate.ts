@@ -7,7 +7,9 @@ import {
   idsToWords,
   kanjiBeginning,
   readingBeginning,
+  Sense,
   setup as setupJmdict,
+  Tag,
   Word,
   Xref,
 } from 'jmdict-simplified-node';
@@ -153,14 +155,23 @@ export function displayWord(w: Word) {
 }
 
 function printXrefs(v: Xref[]) { return v.map(x => x.join(',')).join(';'); }
-export function displayWordLight(w: Word) {
+export function displayWordLight(w: Word, tags: Record<string, string>) {
   const kanji = w.kanji.map(k => k.text).join('・');
-  const kana = w.kana.map(k => k.text).join('・')
-  const s = w.sense
-                .map((sense, n) => prefixNumber(n) + ' ' + sense.gloss.map(gloss => gloss.text).join('/') +
-                                   (sense.related.length ? ` (→ ${printXrefs(sense.related)})` : '') +
-                                   (sense.antonym.length ? ` (← ${printXrefs(sense.antonym)})` : ''))
-                .join(' ');
+  const kana = w.kana.map(k => k.text).join('・');
+
+  type TagKey = {[K in keyof Sense]: Sense[K] extends Tag[] ? K : never}[keyof Sense];
+  const tagFields: Partial<Record<TagKey, string>> = {dialect: '🗣', field: '🀄️', misc: '👉'};
+  const s =
+      w.sense
+          .map((sense, n) => prefixNumber(n) + ' ' + sense.gloss.map(gloss => gloss.text).join('/') +
+                             (sense.related.length ? ` (→ ${printXrefs(sense.related)})` : '') +
+                             (sense.antonym.length ? ` (← ${printXrefs(sense.antonym)})` : '') +
+                             Object.entries(tagFields)
+                                 .map(([k, v]) => sense[k as TagKey].length
+                                                      ? ` (${v}${sense[k as TagKey].map(k => tags[k]).join('; ')})`
+                                                      : '')
+                                 .join(''))
+          .join(' ');
   // console.error(related)
   return `${kanji}「${kana}」| ${s}`;
 }
@@ -564,7 +575,7 @@ if (module === require.main) {
               const hits = fromEnd.slice(0, MAX_LINES);
               const words = await scoreHitsToWords(hits);
               for (const [wi, w] of words.entries()) {
-                console.log('    - ' + contextClozeOrStringToString(hits[wi].run) + ' | ' + displayWordLight(w));
+                console.log('    - ' + contextClozeOrStringToString(hits[wi].run) + ' | ' + displayWordLight(w, tags));
               }
               if (fromEnd.length > MAX_LINES) { console.log(`    - (… ${fromEnd.length - MAX_LINES} omitted) INFO`); }
             }
