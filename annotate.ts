@@ -233,11 +233,12 @@ async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<FillInTheB
           const jf = await jmdictFuriganaPromise;
           conjugatedPhrases.set(cloze, {
             cloze: generateContextClozed(left, cloze, right),
-            lemmas: bunsetsu.map(o => {
+            lemmas: goodBunsetsu.map(o => {
               const entries = jf.textToEntry.get(o.lemma) || [];
               const lemmaReading = kata2hira(o.lemmaReading);
               const entry = entries.find(e => e.reading === lemmaReading);
-              return entry ? entry.furigana : [{ruby: o.lemma, rt: lemmaReading}];
+              return entry ? entry.furigana
+                           : o.lemma === lemmaReading ? [lemmaReading] : [{ruby: o.lemma, rt: lemmaReading}];
             })
           });
         }
@@ -543,7 +544,7 @@ if (module === require.main) {
             console.log('  - Conjugated phrases');
             for (const [_, c] of results.particlesConjphrases.conjugatedPhrases) {
               const cloze = c.cloze;
-              console.log(`    - ${contextClozeToString(cloze)} | ${furiganaToRuby(c.lemmas[0])}`);
+              console.log(`    - ${contextClozeToString(cloze)} | ${c.lemmas.map(furiganaToRuby).join('＋')}`);
             }
           }
         }
