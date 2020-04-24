@@ -9,6 +9,7 @@ import {
   readingBeginning,
   setup as setupJmdict,
   Word,
+  Xref,
 } from 'jmdict-simplified-node';
 
 import {AnalysisResult, ConjugatedPhrase, ContextCloze, FillInTheBlanks, ScoreHit} from './interfaces';
@@ -150,10 +151,17 @@ export function displayWord(w: Word) {
   return w.kanji.map(k => k.text).join('・') + '「' + w.kana.map(k => k.text).join('・') + '」：' +
          w.sense.map((sense, n) => prefixNumber(n) + ' ' + sense.gloss.map(gloss => gloss.text).join('/')).join('; ');
 }
+
+function printXrefs(v: Xref[]) { return v.map(x => x.join(',')).join(';'); }
 export function displayWordLight(w: Word) {
   const kanji = w.kanji.map(k => k.text).join('・');
   const kana = w.kana.map(k => k.text).join('・')
-  const s = w.sense.map((sense, n) => prefixNumber(n) + ' ' + sense.gloss.map(gloss => gloss.text).join('/')).join(' ');
+  const s = w.sense
+                .map((sense, n) => prefixNumber(n) + ' ' + sense.gloss.map(gloss => gloss.text).join('/') +
+                                   (sense.related.length ? ` (→ ${printXrefs(sense.related)})` : '') +
+                                   (sense.antonym.length ? ` (← ${printXrefs(sense.antonym)})` : ''))
+                .join(' ');
+  // console.error(related)
   return `${kanji}「${kana}」| ${s}`;
 }
 export function displayWordDetailed(w: Word, tags: {[k: string]: string}) {
@@ -544,7 +552,7 @@ if (module === require.main) {
             console.log('  - Conjugated phrases');
             for (const [_, c] of results.particlesConjphrases.conjugatedPhrases) {
               const cloze = c.cloze;
-              console.log(`    - ${contextClozeToString(cloze)} | ${c.lemmas.map(furiganaToRuby).join('＋')}`);
+              console.log(`    - ${contextClozeToString(cloze)} | ${c.lemmas.map(furiganaToRuby).join(' + ')}`);
             }
           }
         }
