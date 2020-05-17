@@ -241,8 +241,7 @@ async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<FillInTheB
     const first = bunsetsu[0];
     if (!first) { continue; }
     const pos0 = first.partOfSpeech[0];
-    if (bunsetsus.length > 1 && bunsetsu.length > 1 &&
-        (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject'))) {
+    if (bunsetsu.length > 1 && (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject'))) {
       const ignoreRight = filterRight(bunsetsu, m => !goodMorphemePredicate(m));
       const goodBunsetsu = ignoreRight.length === 0 ? bunsetsu : bunsetsu.slice(0, -ignoreRight.length);
       if (goodBunsetsu.length > 1) {
