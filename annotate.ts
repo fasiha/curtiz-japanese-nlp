@@ -168,7 +168,7 @@ export function displayWordLight(w: Word, tags: Record<string, string>) {
                              (sense.antonym.length ? ` (👈 ${printXrefs(sense.antonym)})` : '') +
                              Object.entries(tagFields)
                                  .map(([k, v]) => sense[k as TagKey].length
-                                                      ? ` (${v}${sense[k as TagKey].map(k => tags[k]).join('; ')})`
+                                                      ? ` (${v} ${sense[k as TagKey].map(k => tags[k]).join('; ')})`
                                                       : '')
                                  .join(''))
           .join(' ');
@@ -223,7 +223,8 @@ function generateContextClozed(left: string, cloze: string, right: string): Cont
   let contextLength = 0;
   while (!appearsExactlyOnce(sentence, leftContext + cloze + rightContext)) {
     contextLength++;
-    if (contextLength >= left.length && contextLength >= right.length) {
+    if (contextLength > left.length && contextLength > right.length) {
+      console.error({sentence, left, cloze, right, leftContext, rightContext, contextLength});
       throw new Error('Ran out of context to build unique cloze');
     }
     leftContext = left.slice(-contextLength);
