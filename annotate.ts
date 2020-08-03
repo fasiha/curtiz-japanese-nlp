@@ -26,7 +26,7 @@ import {
 } from './mecabUnidic';
 
 const jmdictFuriganaPromise = setupJmdictFurigana()
-const jmdictPromise = setupJmdict('jmdict-simplified', 'jmdict-eng-3.0.1.json');
+const jmdictPromise = setupJmdict('jmdict-simplified', 'jmdict-eng-3.1.0.json', true);
 
 interface MecabJdeppParsed {
   morphemes: Morpheme[];
@@ -72,7 +72,7 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[]): Promi
   const superhits: ScoreHit[][][] = [];
   for (let i = 0; i < morphemes.length; i++) {
     const hits: ScoreHit[][] = [];
-    for (let j = morphemes.length; j > i; --j) {
+    for (let j = Math.min(morphemes.length, i + 20); j > i; --j) {
       const run = morphemes.slice(i, j);
       const runLiteral = simplify(generateContextClozed(bunsetsuToString(morphemes.slice(0, i)), bunsetsuToString(run),
                                                         bunsetsuToString(morphemes.slice(j))));
@@ -283,8 +283,8 @@ async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<FillInTheB
 
 function morphemeToSearchLemma(m: Morpheme): string[] {
   const pos0 = m.partOfSpeech[0];
-  const conjugatable = (m.inflection ?.[0]) || (m.inflectionType ?.[0]) || pos0.startsWith('verb') ||
-                                              pos0.endsWith('_verb') || pos0.startsWith('adject');
+  const conjugatable = (m.inflection?.[0]) || (m.inflectionType?.[0]) || pos0.startsWith('verb') ||
+                       pos0.endsWith('_verb') || pos0.startsWith('adject');
   const potentialRendaku = m.literal === m.lemma && hasKanji(m.lemma) && m.lemmaReading !== m.pronunciation;
   return (conjugatable || potentialRendaku) ? [kata2hira(m.lemmaReading)] : [];
   // literal's pronunciation will handle the rest
@@ -471,39 +471,40 @@ function furiganaToRuby(fs: Furigana[]): string {
   return fs.map(f => typeof f === 'string' ? f : `<ruby>${f.ruby}<rt>${f.rt}</rt></ruby>`).join('');
 }
 
+// make sure furigana's rubys are verbatim the sentence
+export function checkFurigana(sentence: string, furigana: Furigana[][]): Furigana[][] {
+  const rubys = flatten(furigana).map(toruby);
+  if (rubys.join('').length >= sentence.length) { return furigana; }
+  // whitespace or some other character was stripped. add it back!
+  let start = 0;
+  let ret: Furigana[][] = [];
+  for (const fs of furigana) {
+    const chunk = fs.map(toruby).join('');
+    const hit = sentence.indexOf(chunk, start);
+    if (hit < 0) { throw new Error('cannot find: ' + chunk); }
+    ret.push(hit > start ? [sentence.slice(start, hit), ...fs] : fs);
+    // prepending the holes like this will keep the same number of morphemes in `furigana`
+    start = hit + chunk.length;
+  }
+  return ret;
+}
+function toruby(f: Furigana) { return typeof f === 'string' ? f : f.ruby; }
+
 export async function analyzeSentence(sentence: string, overrides?: Map<string, Furigana[]>): Promise<AnalysisResult> {
   const parsed = await mecabJdepp(sentence);
 
   // Promises
-  const furiganaP = hasKanji(sentence) ? (morphemesToFurigana(parsed.morphemes, overrides || new Map())) : undefined;
+  const furiganaP =
+      hasKanji(sentence)
+          ? morphemesToFurigana(parsed.morphemes, overrides || new Map()).then(o => checkFurigana(sentence, o))
+          : undefined;
   const particlesConjphrasesP = identifyFillInBlanks(parsed.bunsetsus);
   const dictionaryHitsP = enumerateDictionaryHits(parsed.morphemes);
 
   let [furigana, particlesConjphrases, dictionaryHits] =
       await Promise.all([furiganaP, particlesConjphrasesP, dictionaryHitsP]);
-
-  // make sure we furigana's rubys are verbatim the sentence
-  if (furigana) {
-    const rubys = flatten(furigana).map(toruby);
-    if (rubys.join('').length < sentence.length) {
-      // whitespace or some other character was stripped. add it back!
-      let start = 0;
-      let ret: Furigana[][] = [];
-      for (const fs of furigana) {
-        const chunk = fs.map(toruby).join('');
-        const hit = sentence.indexOf(chunk, start);
-        if (hit < 0) { throw new Error('cannot find: ' + chunk); }
-        ret.push(hit > start ? [sentence.slice(start, hit), ...fs] : fs);
-        // prepending the holes like this will keep the same number of morphemes in `furigana`
-        start = hit + chunk.length;
-      }
-      // overwrite
-      furigana = ret;
-    }
-  }
   return {furigana, particlesConjphrases, dictionaryHits};
 }
-function toruby(f: Furigana) { return typeof f === 'string' ? f : f.ruby; }
 
 export async function scoreHitsToWords(hits: ScoreHit[]) {
   const {db} = await jmdictPromise;
@@ -549,7 +550,7 @@ if (module === require.main) {
           console.log(line);
           continue;
         }
-        const sentence = line.slice(line.match(startRegexp) ?.[0].length );
+        const sentence = line.slice(line.match(startRegexp)?.[0].length);
         const results = await analyzeSentence(sentence, overrides);
         console.log(results.furigana ? '- @ ' + results.furigana.map(furiganaToRuby).join('') : line);
 
