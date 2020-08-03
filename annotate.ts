@@ -1,6 +1,13 @@
 import {dedupe, filterRight, flatmap, flatten, hasHiragana, hasKanji, kata2hira} from 'curtiz-utils'
 import {promises as pfs} from 'fs';
-import {Entry, Furigana, furiganaToString, JmdictFurigana, setup as setupJmdictFurigana} from 'jmdict-furigana-node';
+import {
+  Entry,
+  Furigana,
+  furiganaToString,
+  JmdictFurigana,
+  Ruby,
+  setup as setupJmdictFurigana
+} from 'jmdict-furigana-node';
 import {
   getField,
   getTags as getTagsDb,
@@ -468,7 +475,14 @@ function search(map: JmdictFurigana['readingToEntry'], first: string, sub: 'read
 }
 
 function furiganaToRuby(fs: Furigana[]): string {
-  return fs.map(f => typeof f === 'string' ? f : `<ruby>${f.ruby}<rt>${f.rt}</rt></ruby>`).join('');
+  const rubiesToHtml = (v: Ruby[]) =>
+      v.length ? `<ruby>${v.map(o => o.ruby).join('')}<rt>${v.map(o => o.rt).join('')}</rt></ruby>` : '';
+  const ret = fs.reduce(({stringSoFar, rubiesSoFar}, curr) =>
+                            typeof curr === 'object'
+                                ? {stringSoFar, rubiesSoFar: rubiesSoFar.concat(curr)}
+                                : {stringSoFar: stringSoFar + rubiesToHtml(rubiesSoFar) + curr, rubiesSoFar: []},
+                        {stringSoFar: '', rubiesSoFar: [] as Ruby[]});
+  return ret.stringSoFar + rubiesToHtml(ret.rubiesSoFar);
 }
 
 // make sure furigana's rubys are verbatim the sentence
