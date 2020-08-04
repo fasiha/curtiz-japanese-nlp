@@ -534,71 +534,73 @@ export function contextClozeOrStringToString(c: ContextCloze|string): string {
   return typeof c === 'string' ? c : contextClozeToString(c);
 }
 
-if (module === require.main) {
-  (async () => {
-    const {db} = await jmdictPromise;
-    const tags = JSON.parse(await getField(db, 'tags'));
+export async function linesToCurtizMarkdown(jmdictPromise2: typeof jmdictPromise, lines: string[]) {
+  const {db} = await jmdictPromise;
+  const tags: Record<string, string> = JSON.parse(await getField(db, 'tags'));
+
+  const MAX_LINES = 8;
+  const overrides: Map<string, Furigana[]> = new Map();
+  const startRegexp = /^-\s+@\s+/;
+  for (const line of lines) {
+    if (!startRegexp.test(line)) {
+      console.log(line);
+      continue;
+    }
+    const sentence = line.slice(line.match(startRegexp)?.[0].length);
+    const results = await analyzeSentence(sentence, overrides);
+    console.log(results.furigana ? '- @ ' + results.furigana.map(furiganaToRuby).join('') : line);
 
     {
-      let lines = `- @ 今日は良い天気だ。
+      if (results.particlesConjphrases.particles.size) {
+        console.log('  - Particles');
+        for (const [_, cloze] of results.particlesConjphrases.particles) {
+          console.log(
+              `    - ${cloze.left}${cloze.left || cloze.right ? '[' + cloze.cloze + ']' : cloze.cloze}${cloze.right}`);
+        }
+      }
+      if (results.particlesConjphrases.conjugatedPhrases.size) {
+        console.log('  - Conjugated phrases');
+        for (const [_, c] of results.particlesConjphrases.conjugatedPhrases) {
+          const cloze = c.cloze;
+          console.log(`    - ${contextClozeToString(cloze)} | ${c.lemmas.map(furiganaToRuby).join(' + ')}`);
+        }
+      }
+    }
+    {
+      console.log('  - Vocab');
+      for (const fromStart of results.dictionaryHits) {
+        for (const fromEnd of fromStart) {
+          console.log(`  - Vocab: ${fromEnd[0].search} INFO`);
+          const hits = fromEnd.slice(0, MAX_LINES);
+          const words = await scoreHitsToWords(hits);
+          for (const [wi, w] of words.entries()) {
+            console.log('    - ' + contextClozeOrStringToString(hits[wi].run) + ' | ' + displayWordLight(w, tags));
+          }
+          if (fromEnd.length > MAX_LINES) { console.log(`    - (… ${fromEnd.length - MAX_LINES} omitted) INFO`); }
+        }
+      }
+    }
+  }
+}
+
+if (module === require.main) {
+  (async () => {
+    let lines = `- @ 今日は良い天気だ。
 
 - @ たのしいですか。
 
 - @ 何できた？`.split('\n');
-      if (process.argv.length <= 2) {
-        const getStdin = require('get-stdin');
+    if (process.argv.length <= 2) {
+      const getStdin = require('get-stdin');
 
-        // no arguments, read from stdin. If stdin is empty, use default.
-        const raw = (await getStdin()).trim();
-        if (raw) { lines = raw.split('\n'); }
-      } else {
-        lines = flatmap(await Promise.all(process.argv.slice(2).map(f => pfs.readFile(f, 'utf8'))),
-                        s => s.trim().replace(/\r/g, '').split('\n'));
-      }
-
-      const MAX_LINES = 8;
-      const overrides: Map<string, Furigana[]> = new Map();
-      const startRegexp = /^-\s+@\s+/;
-      for (const line of lines) {
-        if (!startRegexp.test(line)) {
-          console.log(line);
-          continue;
-        }
-        const sentence = line.slice(line.match(startRegexp)?.[0].length);
-        const results = await analyzeSentence(sentence, overrides);
-        console.log(results.furigana ? '- @ ' + results.furigana.map(furiganaToRuby).join('') : line);
-
-        {
-          if (results.particlesConjphrases.particles.size) {
-            console.log('  - Particles');
-            for (const [_, cloze] of results.particlesConjphrases.particles) {
-              console.log(`    - ${cloze.left}${cloze.left || cloze.right ? '[' + cloze.cloze + ']' : cloze.cloze}${
-                  cloze.right}`);
-            }
-          }
-          if (results.particlesConjphrases.conjugatedPhrases.size) {
-            console.log('  - Conjugated phrases');
-            for (const [_, c] of results.particlesConjphrases.conjugatedPhrases) {
-              const cloze = c.cloze;
-              console.log(`    - ${contextClozeToString(cloze)} | ${c.lemmas.map(furiganaToRuby).join(' + ')}`);
-            }
-          }
-        }
-        {
-          console.log('  - Vocab');
-          for (const fromStart of results.dictionaryHits) {
-            for (const fromEnd of fromStart) {
-              console.log(`  - Vocab: ${fromEnd[0].search} INFO`);
-              const hits = fromEnd.slice(0, MAX_LINES);
-              const words = await scoreHitsToWords(hits);
-              for (const [wi, w] of words.entries()) {
-                console.log('    - ' + contextClozeOrStringToString(hits[wi].run) + ' | ' + displayWordLight(w, tags));
-              }
-              if (fromEnd.length > MAX_LINES) { console.log(`    - (… ${fromEnd.length - MAX_LINES} omitted) INFO`); }
-            }
-          }
-        }
-      }
+      // no arguments, read from stdin. If stdin is empty, use default.
+      const raw = (await getStdin()).trim();
+      if (raw) { lines = raw.split('\n'); }
+    } else {
+      lines = flatmap(await Promise.all(process.argv.slice(2).map(f => pfs.readFile(f, 'utf8'))),
+                      s => s.trim().replace(/\r/g, '').split('\n'));
     }
+
+    linesToCurtizMarkdown(jmdictPromise, lines);
   })();
 }
