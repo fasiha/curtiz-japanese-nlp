@@ -397,62 +397,91 @@ const DUMB_CHOUONPU_MAP = (function makeChouonpuMap() {
 async function morphemesToFurigana(morphemes: Morpheme[], overrides: Map<string, Furigana[]>): Promise<Furigana[][]> {
   const furigana: Furigana[][] = await Promise.all(morphemes.map(async m => {
     const {lemma, lemmaReading, literal, pronunciation} = m;
-    if (hasKanji(literal)) {
-      {
-        const hit = overrides.get(literal);
-        if (hit) { return hit; }
-      }
-
-      const jmdictFurigana = await jmdictFuriganaPromise;
-      const {textToEntry, readingToEntry} = jmdictFurigana;
-
-      const literalHit = search(textToEntry, literal, 'reading', morphemeToStringLiteral(m, jmdictFurigana));
-      if (literalHit) { return literalHit.furigana; }
-      const pronunciationHit = search(readingToEntry, pronunciation, 'text', [literal]);
-      if (pronunciationHit) { return pronunciationHit.furigana; }
-
-      // help with 一本/rendaku
-      if (literal.length === 1) { return [{ruby: literal, rt: morphemeToStringLiteral(m).join('・')}]; }
-
-      // for e.g. 住ん|で|い|ます but not 一本 (pronounced pon but lemma=hon: rendaku)
-      // if you reach here, there's nothing ensuring that the furigana found will match `pronunciation`!
-      const lemmaHit = search(
-          textToEntry, lemma, 'reading',
-          morphemeToStringLiteral({lemma, lemmaReading, literal: lemma, pronunciation: lemmaReading}, jmdictFurigana));
-      if (lemmaHit) {
-        const furiganaDict: Map<string, string> = new Map();
-        for (const f of lemmaHit.furigana) {
-          if (typeof f === 'string') { continue; }
-          furiganaDict.set(f.ruby, f.rt);
-        }
-
-        const chars = literal.split('');
-        let kanji = chars.filter(hasKanji);
-        const annotatedChars: Furigana[] = chars.slice();
-
-        // start from all kanji characters in a string, see if that's in furiganaDict, if not, chop last
-        while (kanji.length) {
-          const hit = triu(kanji).find(ks => furiganaDict.has(ks.join('')));
-          if (hit) {
-            const hitstr = hit.join('');
-            const idx = literal.indexOf(hitstr);
-            annotatedChars[idx] = {ruby: hitstr, rt: furiganaDict.get(hitstr) || hitstr};
-            for (let i = idx + 1; i < idx + hitstr.length; i++) { annotatedChars[i] = ''; }
-            kanji = kanji.slice(hitstr.length);
-            continue;
-          }
-          // no hit found, kanji won't shrink to empty, break now
-          break;
-        }
-        if (kanji.length === 0) { return annotatedChars; }
-      }
-      // const lemmaReadingHit = search(readingToEntry, lemmaReading, 'text', lemma);
-      // if (lemmaReadingHit) { return lemmaReadingHit.furigana; }
+    if (!hasKanji(literal)) { return [literal]; }
+    {
+      const hit = overrides.get(literal);
+      if (hit) { return hit; }
     }
-    return [hasKanji(literal) ? {ruby: literal, rt: morphemeToStringLiteral(m).join('・')} : literal];
+
+    const jmdictFurigana = await jmdictFuriganaPromise;
+    const {textToEntry, readingToEntry} = jmdictFurigana;
+
+    const literalHit = search(textToEntry, literal, 'reading', morphemeToStringLiteral(m, jmdictFurigana));
+    if (literalHit) { return literalHit.furigana; }
+    const pronunciationHit = search(readingToEntry, pronunciation, 'text', [literal]);
+    if (pronunciationHit) { return pronunciationHit.furigana; }
+
+    // help with 一本/rendaku
+    if (literal.length === 1) { return [{ruby: literal, rt: morphemeToStringLiteral(m).join('・')}]; }
+
+    // for e.g. 住ん|で|い|ます but not 一本 (pronounced pon but lemma=hon: rendaku)
+    // if you reach here, there's nothing ensuring that the furigana found will match `pronunciation`!
+    const lemmaHit = search(
+        textToEntry, lemma, 'reading',
+        morphemeToStringLiteral({lemma, lemmaReading, literal: lemma, pronunciation: lemmaReading}, jmdictFurigana));
+    if (lemmaHit) {
+      const furiganaDict: Map<string, string> = new Map();
+      for (const f of lemmaHit.furigana) {
+        if (typeof f === 'string') { continue; }
+        furiganaDict.set(f.ruby, f.rt);
+      }
+
+      const chars = literal.split('');
+      let kanji = chars.filter(hasKanji);
+      const annotatedChars: Furigana[] = chars.slice();
+
+      // start from all kanji characters in a string, see if that's in furiganaDict, if not, chop last
+      while (kanji.length) {
+        const hit = triu(kanji).find(ks => furiganaDict.has(ks.join('')));
+        if (hit) {
+          const hitstr = hit.join('');
+          const idx = literal.indexOf(hitstr);
+          annotatedChars[idx] = {ruby: hitstr, rt: furiganaDict.get(hitstr) || hitstr};
+          for (let i = idx + 1; i < idx + hitstr.length; i++) { annotatedChars[i] = ''; }
+          kanji = kanji.slice(hitstr.length);
+          continue;
+        }
+        // no hit found, kanji won't shrink to empty, break now
+        break;
+      }
+      if (kanji.length === 0) { return annotatedChars; }
+    }
+    // const lemmaReadingHit = search(readingToEntry, lemmaReading, 'text', lemma);
+    // if (lemmaReadingHit) { return lemmaReadingHit.furigana; }
+
+    // We couldn't rely on JMDictFurigana to help us out. The best we can do now is to use MeCab's parsing.
+    // For example: literal="帰っ" and rt="かえっ".
+    {
+      const rt = morphemeToStringLiteral(m)[0];
+      if (rt === literal) { return [literal]; }
+
+      // find matching text at the start and end of `literal` and `rt`, and pull them off as strings.
+      const prePost = prePostMatches(literal, rt);
+      const ret = [prePost.pre, {ruby: prePost.middleA, rt: prePost.middleB}, prePost.post].filter(s => !!s);
+      return ret;
+    }
   }));
 
   return furigana;
+}
+function prePostMatches(a: string, b: string) {
+  let pre = '';
+  let post = '';
+  if (a === b) { return {pre, middleA: a, middleB: b, post}; }
+  for (let i = 0; i < a.length; i++) {
+    const c = a[i];
+    if (c !== b[i]) { break; }
+    pre += c;
+  }
+  for (let i = 0; i < a.length; i++) {
+    const c = a[a.length - 1 - i];
+    const c2 = b[b.length - 1 - i];
+    if (c !== c2) { break; }
+    post = c + post;
+  }
+  const middleA = a.slice(pre.length, a.length - post.length);
+  const middleB = b.slice(pre.length, b.length - post.length);
+  return {pre, middleA, middleB, post};
 }
 function triu<T>(arr: T[]): T[][] {
   const ret: T[][] = [];
