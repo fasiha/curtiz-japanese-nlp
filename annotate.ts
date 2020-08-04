@@ -338,7 +338,6 @@ function morphemeToStringLiteral(m: Pick<Morpheme, 'literal'|'lemma'|'pronunciat
 
     if (jmdictFurigana) {
       const entries = jmdictFurigana.textToEntry.get(m.lemma);
-      console.log(entries);
       if (entries) {
         const lemmaReading = kata2hira(m.lemmaReading);
         const entry = entries.find(e => e.reading === lemmaReading);
@@ -586,24 +585,71 @@ export async function linesToCurtizMarkdown(lines: string[]) {
   return ret;
 }
 
+export async function linesToFurigana(lines: string[]) {
+  const ret: string[] = [];
+  const overrides: Map<string, Furigana[]> = new Map();
+  for (const line of lines) {
+    if (!hasKanji(line)) {
+      ret.push(line);
+      continue;
+    }
+    const parsed = await mecabJdepp(line);
+    const furigana = await morphemesToFurigana(parsed.morphemes, overrides).then(o => checkFurigana(line, o))
+    ret.push(furigana.map(furiganaToRuby).join(''));
+  }
+  return ret;
+}
+
 if (module === require.main) {
+  const USAGE = `USAGE:
+
+annotate MODE file1 file2
+
+MODE must be one of:
+- "furigana": add furigana to kanji (default)
+- "markdown": output detailed breakdowns of text in files
+
+Input streams are also understood:
+
+annotate MODE < inputfile
+
+cat inputfile | annotate MODE
+`;
+  enum Mode {
+    markdown = 'markdown',
+    furigana = 'furigana',
+  }
+
   (async () => {
     let lines = `- @ 今日は良い天気だ。
 
 - @ たのしいですか。
 
 - @ 何できた？`.split('\n');
-    if (process.argv.length <= 2) {
+    const [, , requestedMode, ...files] = process.argv;
+    if (!Object.values(Mode).includes(requestedMode as any)) {
+      console.error(USAGE);
+      process.exit(1);
+    }
+    const mode = requestedMode as Mode;
+
+    if (files.length === 0) {
       const getStdin = require('get-stdin');
 
       // no arguments, read from stdin. If stdin is empty, use default.
       const raw = (await getStdin()).trim();
       if (raw) { lines = raw.split('\n'); }
     } else {
-      lines = flatmap(await Promise.all(process.argv.slice(2).map(f => pfs.readFile(f, 'utf8'))),
+      lines = flatmap(await Promise.all(files.map(f => pfs.readFile(f, 'utf8'))),
                       s => s.trim().replace(/\r/g, '').split('\n'));
     }
 
-    console.log((await linesToCurtizMarkdown(lines)).join('\n'));
+    if (mode === Mode.furigana) {
+      console.log((await linesToFurigana(lines)).join('\n'));
+    } else if (mode === Mode.markdown) {
+      console.log((await linesToCurtizMarkdown(lines)).join('\n'));
+    } else {
+      const _: never = mode;
+    }
   })();
 }
