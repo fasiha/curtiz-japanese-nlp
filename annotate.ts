@@ -534,7 +534,9 @@ export function contextClozeOrStringToString(c: ContextCloze|string): string {
   return typeof c === 'string' ? c : contextClozeToString(c);
 }
 
-export async function linesToCurtizMarkdown(jmdictPromise2: typeof jmdictPromise, lines: string[]) {
+export async function linesToCurtizMarkdown(lines: string[]) {
+  const ret: string[] = [];
+
   const {db} = await jmdictPromise;
   const tags: Record<string, string> = JSON.parse(await getField(db, 'tags'));
 
@@ -543,44 +545,45 @@ export async function linesToCurtizMarkdown(jmdictPromise2: typeof jmdictPromise
   const startRegexp = /^-\s+@\s+/;
   for (const line of lines) {
     if (!startRegexp.test(line)) {
-      console.log(line);
+      ret.push(line);
       continue;
     }
     const sentence = line.slice(line.match(startRegexp)?.[0].length);
     const results = await analyzeSentence(sentence, overrides);
-    console.log(results.furigana ? '- @ ' + results.furigana.map(furiganaToRuby).join('') : line);
+    ret.push(results.furigana ? '- @ ' + results.furigana.map(furiganaToRuby).join('') : line);
 
     {
       if (results.particlesConjphrases.particles.size) {
-        console.log('  - Particles');
+        ret.push('  - Particles');
         for (const [_, cloze] of results.particlesConjphrases.particles) {
-          console.log(
+          ret.push(
               `    - ${cloze.left}${cloze.left || cloze.right ? '[' + cloze.cloze + ']' : cloze.cloze}${cloze.right}`);
         }
       }
       if (results.particlesConjphrases.conjugatedPhrases.size) {
-        console.log('  - Conjugated phrases');
+        ret.push('  - Conjugated phrases');
         for (const [_, c] of results.particlesConjphrases.conjugatedPhrases) {
           const cloze = c.cloze;
-          console.log(`    - ${contextClozeToString(cloze)} | ${c.lemmas.map(furiganaToRuby).join(' + ')}`);
+          ret.push(`    - ${contextClozeToString(cloze)} | ${c.lemmas.map(furiganaToRuby).join(' + ')}`);
         }
       }
     }
     {
-      console.log('  - Vocab');
+      ret.push('  - Vocab');
       for (const fromStart of results.dictionaryHits) {
         for (const fromEnd of fromStart) {
-          console.log(`  - Vocab: ${fromEnd[0].search} INFO`);
+          ret.push(`  - Vocab: ${fromEnd[0].search} INFO`);
           const hits = fromEnd.slice(0, MAX_LINES);
           const words = await scoreHitsToWords(hits);
           for (const [wi, w] of words.entries()) {
-            console.log('    - ' + contextClozeOrStringToString(hits[wi].run) + ' | ' + displayWordLight(w, tags));
+            ret.push('    - ' + contextClozeOrStringToString(hits[wi].run) + ' | ' + displayWordLight(w, tags));
           }
-          if (fromEnd.length > MAX_LINES) { console.log(`    - (… ${fromEnd.length - MAX_LINES} omitted) INFO`); }
+          if (fromEnd.length > MAX_LINES) { ret.push(`    - (… ${fromEnd.length - MAX_LINES} omitted) INFO`); }
         }
       }
     }
   }
+  return ret;
 }
 
 if (module === require.main) {
@@ -601,6 +604,6 @@ if (module === require.main) {
                       s => s.trim().replace(/\r/g, '').split('\n'));
     }
 
-    linesToCurtizMarkdown(jmdictPromise, lines);
+    console.log((await linesToCurtizMarkdown(lines)).join('\n'));
   })();
 }
