@@ -248,7 +248,17 @@ const inflectionTypeObj = keysToObj(inflectionTypeKeys);
 
 export function invokeMecab(text: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    let spawned = spawn('mecab', ['-d', '/usr/local/lib/mecab/dic/unidic']);
+    /*
+    This requires `unidic-csj-3.0.1.1` to contain dicrc etc., and dicrc to contain an extra format:
+    ```
+node-format-unidic = %m\t%f[9]\t%f[6]\t%f[7]\t%F-[0,1,2,3]\t%f[4]\t%f[5]\n
+unk-format-unidic  = %m\t%m\t%m\t%m\t%F-[0,1,2,3]\t%f[4]\t%f[5]\n
+bos-format-unidic  =
+eos-format-unidic  = EOS\n
+    ```
+    This is the same format that UniDic 2.1 had (literally this is copied from UniDic 2.1's dicrc).
+    */
+    let spawned = spawn('mecab', ['-d', __dirname + '/unidic-csj-3.0.1.1', '-O', 'unidic']);
     spawned.stdin.write(text);
     spawned.stdin.write('\n'); // necessary, otherwise MeCab says `input-buffer overflow.`
     spawned.stdin.end();
