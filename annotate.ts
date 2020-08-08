@@ -643,14 +643,15 @@ export async function linesToFurigana(lines: string[], buildDictionary = false) 
     }
     const parsed = await mecabJdepp(line);
     const furigana = await morphemesToFurigana(parsed.morphemes, overrides).then(o => checkFurigana(line, o));
+    const lineHash = 'hash-' + base64_to_base64url(createHash('md5').update(line).digest('base64'));
+    ret.push(`<line id="${lineHash}">` +
+             furigana
+                 .map((morphemeFuri, morphemeIdx) =>
+                          `<morpheme class="idx-${morphemeIdx}">` + furiganaToRuby(morphemeFuri) + '</morpheme>')
+                 .join('') +
+             '</line>');
 
     if (buildDictionary) {
-      const lineHash = base64_to_base64url(createHash('md5').update(line).digest('base64'));
-      ret.push(furigana
-                   .map((morphemeFuri, morphemeIdx) => `<morpheme id="line-${lineHash}-i-${morphemeIdx}">` +
-                                                       furiganaToRuby(morphemeFuri) + '</morpheme>')
-                   .join(''));
-
       const dictHits = await enumerateDictionaryHits(parsed.morphemes, false);
       for (let i = 0; i < dictHits.length; i++) {
         for (let j = 0; j < dictHits[i].length; j++) {
@@ -663,8 +664,8 @@ export async function linesToFurigana(lines: string[], buildDictionary = false) 
       await mkdirp(parentDir);
       await pfs.writeFile(`${parentDir}/line-${lineHash}.json`,
                           JSON.stringify({line, bunsetsus: parsed.bunsetsus, dictHits}, null, 1));
-    } else {
-      ret.push(furigana.map(morphemeFuri => '<morpheme>' + furiganaToRuby(morphemeFuri) + '</morpheme>').join(''));
+      // we should put this block in a promise and await all such promises before returning, to get more throughput
+      // (we'd interleave computation between LevelDB/disk i/o)
     }
   }
   return ret;
@@ -677,6 +678,7 @@ annotate MODE file1 file2
 
 MODE must be one of:
 - "furigana": add furigana to kanji (default)
+- "furigana-dict": same as "furigana" but also emit morpheme/dictionary information
 - "markdown": output detailed breakdowns of text in files
 
 Input streams are also understood:
@@ -688,6 +690,7 @@ cat inputfile | annotate MODE
   enum Mode {
     markdown = 'markdown',
     furigana = 'furigana',
+    furiganaDict = 'furigana-dict',
   }
 
   (async () => {
@@ -715,6 +718,8 @@ cat inputfile | annotate MODE
     }
 
     if (mode === Mode.furigana) {
+      console.log((await linesToFurigana(lines, false)).join('\n'));
+    } else if (mode === Mode.furiganaDict) {
       console.log((await linesToFurigana(lines, true)).join('\n'));
     } else if (mode === Mode.markdown) {
       console.log((await linesToCurtizMarkdown(lines)).join('\n'));
