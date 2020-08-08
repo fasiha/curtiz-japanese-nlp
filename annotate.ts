@@ -505,6 +505,7 @@ function search(map: JmdictFurigana['readingToEntry'], first: string, sub: 'read
 function furiganaToRuby(fs: Furigana[]): string {
   const rubiesToHtml = (v: Ruby[]) =>
       v.length ? `<ruby>${v.map(o => o.ruby).join('')}<rt>${v.map(o => o.rt).join('')}</rt></ruby>` : '';
+  // collapse adjacent <ruby> tags into one so macOS selection on resulting HTML works: undo JMDict-Furigana <sad>
   const ret = fs.reduce(({stringSoFar, rubiesSoFar}, curr) =>
                             typeof curr === 'object'
                                 ? {stringSoFar, rubiesSoFar: rubiesSoFar.concat(curr)}
@@ -624,7 +625,7 @@ export async function linesToFurigana(lines: string[]) {
     }
     const parsed = await mecabJdepp(line);
     const furigana = await morphemesToFurigana(parsed.morphemes, overrides).then(o => checkFurigana(line, o))
-    ret.push(furigana.map(furiganaToRuby).join(''));
+    ret.push(furigana.map(morphemeFuri => '<morpheme>' + furiganaToRuby(morphemeFuri) + '</morpheme>').join(''));
   }
   return ret;
 }
