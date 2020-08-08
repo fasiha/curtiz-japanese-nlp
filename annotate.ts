@@ -1,3 +1,4 @@
+import {createHash} from 'crypto';
 import {dedupe, filterRight, flatmap, flatten, hasHiragana, hasKanji, kata2hira} from 'curtiz-utils'
 import {promises as pfs} from 'fs';
 import {
@@ -20,6 +21,7 @@ import {
   Word,
   Xref,
 } from 'jmdict-simplified-node';
+import mkdirp from 'mkdirp';
 
 import {AnalysisResult, ConjugatedPhrase, ContextCloze, FillInTheBlanks, ScoreHit} from './interfaces';
 import {addJdepp} from './jdepp';
@@ -64,7 +66,7 @@ type WithSearchKanji<T> = T&{ searchKanji: string[]; };
  * }
  * ```
  */
-export async function enumerateDictionaryHits(plainMorphemes: Morpheme[]): Promise<ScoreHit[][][]> {
+export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full = true): Promise<ScoreHit[][][]> {
   const {db} = await jmdictPromise;
   const simplify = (c: ContextCloze) => (c.left || c.right) ? c : c.cloze;
 
@@ -78,6 +80,14 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[]): Promi
       }));
   const superhits: ScoreHit[][][] = [];
   for (let i = 0; i < morphemes.length; i++) {
+    if (!full) {
+      const pos = morphemes[i].partOfSpeech;
+      if (pos[0].startsWith('particle') || pos[0].startsWith('supplementary') || pos[0].startsWith('auxiliary')) {
+        // skip these
+        superhits.push([]);
+        continue;
+      }
+    }
     const hits: ScoreHit[][] = [];
     for (let j = Math.min(morphemes.length, i + 20); j > i; --j) {
       const run = morphemes.slice(i, j);
@@ -615,7 +625,15 @@ export async function linesToCurtizMarkdown(lines: string[]) {
   return ret;
 }
 
-export async function linesToFurigana(lines: string[]) {
+// RFC 4648 §5: base64url
+function base64_to_base64url(base64: string) {
+  return base64.replace(/\//g, '_').replace(/\+/g, '-').replace(/=+$/g, '');
+}
+
+export async function linesToFurigana(lines: string[], buildDictionary = false) {
+  const {db} = await jmdictPromise;
+  const tags: Record<string, string> = JSON.parse(await getField(db, 'tags'));
+
   const ret: string[] = [];
   const overrides: Map<string, Furigana[]> = new Map();
   for (const line of lines) {
@@ -624,8 +642,30 @@ export async function linesToFurigana(lines: string[]) {
       continue;
     }
     const parsed = await mecabJdepp(line);
-    const furigana = await morphemesToFurigana(parsed.morphemes, overrides).then(o => checkFurigana(line, o))
-    ret.push(furigana.map(morphemeFuri => '<morpheme>' + furiganaToRuby(morphemeFuri) + '</morpheme>').join(''));
+    const furigana = await morphemesToFurigana(parsed.morphemes, overrides).then(o => checkFurigana(line, o));
+
+    if (buildDictionary) {
+      const lineHash = base64_to_base64url(createHash('md5').update(line).digest('base64'));
+      ret.push(furigana
+                   .map((morphemeFuri, morphemeIdx) => `<morpheme id="line-${lineHash}-i-${morphemeIdx}">` +
+                                                       furiganaToRuby(morphemeFuri) + '</morpheme>')
+                   .join(''));
+
+      const dictHits = await enumerateDictionaryHits(parsed.morphemes, false);
+      for (let i = 0; i < dictHits.length; i++) {
+        for (let j = 0; j < dictHits[i].length; j++) {
+          const hits = dictHits[i][j].slice(0, 10);
+          const words = await scoreHitsToWords(hits);
+          dictHits[i][j] = hits.map((h, hi) => ({...h, summary: displayWordLight(words[hi], tags)}));
+        }
+      }
+      const parentDir = process.cwd() + '/dict-hits-per-line';
+      await mkdirp(parentDir);
+      await pfs.writeFile(`${parentDir}/line-${lineHash}.json`,
+                          JSON.stringify({line, bunsetsus: parsed.bunsetsus, dictHits}, null, 1));
+    } else {
+      ret.push(furigana.map(morphemeFuri => '<morpheme>' + furiganaToRuby(morphemeFuri) + '</morpheme>').join(''));
+    }
   }
   return ret;
 }
@@ -675,7 +715,7 @@ cat inputfile | annotate MODE
     }
 
     if (mode === Mode.furigana) {
-      console.log((await linesToFurigana(lines)).join('\n'));
+      console.log((await linesToFurigana(lines, true)).join('\n'));
     } else if (mode === Mode.markdown) {
       console.log((await linesToCurtizMarkdown(lines)).join('\n'));
     } else {
