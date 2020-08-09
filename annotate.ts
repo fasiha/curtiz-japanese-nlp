@@ -643,12 +643,9 @@ export async function linesToFurigana(lines: string[], buildDictionary = false) 
     }
     const parsed = await mecabJdepp(line);
     const furigana = await morphemesToFurigana(parsed.morphemes, overrides).then(o => checkFurigana(line, o));
-    const lineHash = 'hash-' + base64_to_base64url(createHash('md5').update(line).digest('base64'));
-    ret.push(`<line id="${lineHash}">` +
-             furigana
-                 .map((morphemeFuri, morphemeIdx) =>
-                          `<morpheme class="idx-${morphemeIdx}">` + furiganaToRuby(morphemeFuri) + '</morpheme>')
-                 .join('') +
+    const lineHash = base64_to_base64url(createHash('md5').update(line).digest('base64'));
+    ret.push(`<line id="hash-${lineHash}">` +
+             furigana.map(morphemeFuri => '<morpheme>' + furiganaToRuby(morphemeFuri) + '</morpheme>').join('') +
              '</line>');
 
     if (buildDictionary) {
