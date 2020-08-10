@@ -660,7 +660,7 @@ export async function linesToFurigana(lines: string[], buildDictionary = false) 
       const parentDir = process.cwd() + '/dict-hits-per-line';
       await mkdirp(parentDir);
       await pfs.writeFile(`${parentDir}/line-${lineHash}.json`,
-                          JSON.stringify({line, bunsetsus: parsed.bunsetsus, dictHits}, null, 1));
+                          JSON.stringify({line, furigana, bunsetsus: parsed.bunsetsus, dictHits}, null, 1));
       // we should put this block in a promise and await all such promises before returning, to get more throughput
       // (we'd interleave computation between LevelDB/disk i/o)
     }
