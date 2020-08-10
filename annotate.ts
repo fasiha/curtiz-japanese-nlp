@@ -1,5 +1,5 @@
 import {createHash} from 'crypto';
-import {dedupe, filterRight, flatmap, flatten, hasHiragana, hasKanji, kata2hira} from 'curtiz-utils'
+import {dedupe, filterRight, flatmap, flatten, hasHiragana, hasKana, hasKanji, kata2hira} from 'curtiz-utils'
 import {promises as pfs} from 'fs';
 import {
   Entry,
@@ -637,7 +637,7 @@ export async function linesToFurigana(lines: string[], buildDictionary = false) 
   const ret: string[] = [];
   const overrides: Map<string, Furigana[]> = new Map();
   for (const line of lines) {
-    if (!hasKanji(line)) {
+    if (!hasKanji(line) && !hasKana(line)) {
       ret.push(line);
       continue;
     }
