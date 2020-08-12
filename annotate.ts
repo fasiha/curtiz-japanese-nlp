@@ -636,9 +636,20 @@ export async function linesToFurigana(lines: string[], buildDictionary = false) 
 
   const ret: string[] = [];
   const overrides: Map<string, Furigana[]> = new Map();
+
+  const parentDir = process.cwd() + '/dict-hits-per-line';
+  await mkdirp(parentDir);
+
+  // this will get written to disk
+  const lightweight: (string|{line: string, hash: string, furigana: Furigana[][]})[] = [];
+  const totalHash = createHash('md5');
+
   for (const line of lines) {
+    totalHash.update(line); // we'll use this to save some lightweight data about each line in this list of `lines`
+
     if (!hasKanji(line) && !hasKana(line)) {
       ret.push(line);
+      lightweight.push(line);
       continue;
     }
     const parsed = await mecabJdepp(line);
@@ -647,6 +658,7 @@ export async function linesToFurigana(lines: string[], buildDictionary = false) 
     ret.push(`<line id="hash-${lineHash}">` +
              furigana.map(morphemeFuri => '<morpheme>' + furiganaToRuby(morphemeFuri) + '</morpheme>').join('') +
              '</line>');
+    lightweight.push({line, hash: lineHash, furigana});
 
     if (buildDictionary) {
       const dictHits = await enumerateDictionaryHits(parsed.morphemes, false);
@@ -657,13 +669,15 @@ export async function linesToFurigana(lines: string[], buildDictionary = false) 
           dictHits[i][j] = hits.map((h, hi) => ({...h, summary: displayWordLight(words[hi], tags)}));
         }
       }
-      const parentDir = process.cwd() + '/dict-hits-per-line';
-      await mkdirp(parentDir);
       await pfs.writeFile(`${parentDir}/line-${lineHash}.json`,
                           JSON.stringify({line, furigana, bunsetsus: parsed.bunsetsus, dictHits}, null, 1));
       // we should put this block in a promise and await all such promises before returning, to get more throughput
       // (we'd interleave computation between LevelDB/disk i/o)
     }
+  }
+  {
+    const total = base64_to_base64url(totalHash.digest('base64'));
+    await pfs.writeFile(`${parentDir}/lightweight-${total}.json`, JSON.stringify(lightweight, null, 1));
   }
   return ret;
 }
