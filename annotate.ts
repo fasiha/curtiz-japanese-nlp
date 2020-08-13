@@ -629,6 +629,7 @@ export async function linesToCurtizMarkdown(lines: string[]) {
 function base64_to_base64url(base64: string) {
   return base64.replace(/\//g, '_').replace(/\+/g, '-').replace(/=+$/g, '');
 }
+async function fileExists(file: string) { return pfs.access(file).then(() => true).catch(() => false); }
 
 export async function linesToFurigana(lines: string[], buildDictionary = false) {
   const {db} = await jmdictPromise;
@@ -659,18 +660,21 @@ export async function linesToFurigana(lines: string[], buildDictionary = false) 
     lightweight.push({line, hash: lineHash, furigana});
 
     if (buildDictionary) {
-      const dictHits = await enumerateDictionaryHits(parsed.morphemes, false);
-      for (let i = 0; i < dictHits.length; i++) {
-        for (let j = 0; j < dictHits[i].length; j++) {
-          const hits = dictHits[i][j].slice(0, 10);
-          const words = await scoreHitsToWords(hits);
-          dictHits[i][j] = hits.map((h, hi) => ({...h, summary: displayWordLight(words[hi], tags)}));
+      const sidecarFile = `${parentDir}/line-${lineHash}.json`;
+      if (!(await fileExists(sidecarFile))) {
+        const dictHits = await enumerateDictionaryHits(parsed.morphemes, false);
+        for (let i = 0; i < dictHits.length; i++) {
+          for (let j = 0; j < dictHits[i].length; j++) {
+            const hits = dictHits[i][j].slice(0, 10);
+            const words = await scoreHitsToWords(hits);
+            dictHits[i][j] = hits.map((h, hi) => ({...h, summary: displayWordLight(words[hi], tags)}));
+          }
         }
+        await pfs.writeFile(sidecarFile,
+                            JSON.stringify({line, furigana, bunsetsus: parsed.bunsetsus, dictHits}, null, 1));
+        // we should put this block in a promise and await all such promises before returning, to get more throughput
+        // (we'd interleave computation between LevelDB/disk i/o)
       }
-      await pfs.writeFile(`${parentDir}/line-${lineHash}.json`,
-                          JSON.stringify({line, furigana, bunsetsus: parsed.bunsetsus, dictHits}, null, 1));
-      // we should put this block in a promise and await all such promises before returning, to get more throughput
-      // (we'd interleave computation between LevelDB/disk i/o)
     }
   }
   {
