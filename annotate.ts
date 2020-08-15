@@ -95,13 +95,14 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
                                                         bunsetsuToString(morphemes.slice(j))));
       let scored: ScoreHit[] = [];
 
-      function helperSearchesHitsToScored(readingSearches: string[], readingSubhits: Word[][]): ScoreHit[] {
-        return flatten(readingSubhits.map((v, i) => v.map(w => {
+      function helperSearchesHitsToScored(searches: string[], subhits: Word[][],
+                                          searchKey: "kana"|"kanji"): ScoreHit[] {
+        return flatten(subhits.map((v, i) => v.map(w => {
           // help catch issues with automatic type widening and excess property checks
           const ret: ScoreHit = {
             wordId: w.id,
-            score: scoreMorphemeWord(run, readingSearches[i], 'kana', w),
-            search: readingSearches[i],
+            score: scoreMorphemeWord(run, searches[i], searchKey, w),
+            search: searches[i],
             run: runLiteral,
           };
           return ret;
@@ -111,13 +112,13 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
       {
         const readingSearches = forkingPaths(run.map(m => m.searchReading)).map(v => v.join(''));
         const readingSubhits = await Promise.all(readingSearches.map(search => readingBeginning(db, search)));
-        scored = helperSearchesHitsToScored(readingSearches, readingSubhits);
+        scored = helperSearchesHitsToScored(readingSearches, readingSubhits, 'kana');
       }
       // Search literals if needed, this works around MeCab mis-readings like お父さん->おちちさん
       {
         const kanjiSearches = forkingPaths(run.map(m => m.searchKanji)).map(v => v.join('')).filter(hasKanji);
         const kanjiSubhits = await Promise.all(kanjiSearches.map(search => kanjiBeginning(db, search)));
-        scored.push(...helperSearchesHitsToScored(kanjiSearches, kanjiSubhits));
+        scored.push(...helperSearchesHitsToScored(kanjiSearches, kanjiSubhits, 'kanji'));
       }
 
       scored.sort((a, b) => b.score - a.score);
