@@ -79,9 +79,9 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
         searchReading: unique(morphemeToSearchLemma(m).concat(morphemeToStringLiteral(m, jmdictFurigana)))
       }));
   const superhits: ScoreHit[][][] = [];
-  for (let i = 0; i < morphemes.length; i++) {
+  for (let startIdx = 0; startIdx < morphemes.length; startIdx++) {
     if (!full) {
-      const pos = morphemes[i].partOfSpeech;
+      const pos = morphemes[startIdx].partOfSpeech;
       if (pos[0].startsWith('particle') || pos[0].startsWith('supplementary') || pos[0].startsWith('auxiliary')) {
         // skip these
         superhits.push([]);
@@ -89,10 +89,11 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
       }
     }
     const hits: ScoreHit[][] = [];
-    for (let j = Math.min(morphemes.length, i + 20); j > i; --j) {
-      const run = morphemes.slice(i, j);
-      const runLiteral = simplify(generateContextClozed(bunsetsuToString(morphemes.slice(0, i)), bunsetsuToString(run),
-                                                        bunsetsuToString(morphemes.slice(j))));
+    for (let endIdx = Math.min(morphemes.length, startIdx + 20); endIdx > startIdx; --endIdx) {
+      const run = morphemes.slice(startIdx, endIdx);
+      const runLiteral =
+          simplify(generateContextClozed(bunsetsuToString(morphemes.slice(0, startIdx)), bunsetsuToString(run),
+                                         bunsetsuToString(morphemes.slice(endIdx))));
       let scored: ScoreHit[] = [];
 
       function helperSearchesHitsToScored(searches: string[], subhits: Word[][],
@@ -104,6 +105,7 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
             score: scoreMorphemeWord(run, searches[i], searchKey, w),
             search: searches[i],
             run: runLiteral,
+            runIdx: [startIdx, endIdx - 1],
           };
           return ret;
         })));

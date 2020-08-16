@@ -17,6 +17,7 @@ export interface ScoreHit {
   score: number;
   search: string;
   run: string|ContextCloze;
+  runIdx: [number, number];
 }
 export interface ConjugatedPhrase {
   cloze: ContextCloze;
