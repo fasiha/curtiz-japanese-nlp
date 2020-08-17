@@ -82,7 +82,7 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
   for (let startIdx = 0; startIdx < morphemes.length; startIdx++) {
     if (!full) {
       const pos = morphemes[startIdx].partOfSpeech;
-      if (pos[0].startsWith('particle') || pos[0].startsWith('supplementary') || pos[0].startsWith('auxiliary')) {
+      if (pos[0].startsWith('supplementary') || pos[0].startsWith('auxiliary')) {
         // skip these
         superhits.push([]);
         continue;
