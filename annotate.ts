@@ -34,8 +34,18 @@ import {
   parseMecab
 } from './mecabUnidic';
 
-const jmdictFuriganaPromise = setupJmdictFurigana()
-const jmdictPromise = setupJmdict('jmdict-simplified', 'jmdict-eng-3.1.0.json', true);
+export {
+  Entry,
+  Furigana,
+  furiganaToString,
+  JmdictFurigana,
+  Ruby,
+  setup as setupJmdictFurigana
+} from 'jmdict-furigana-node';
+export {getField} from 'jmdict-simplified-node';
+
+export const jmdictFuriganaPromise = setupJmdictFurigana()
+export const jmdictPromise = setupJmdict('jmdict-simplified', 'jmdict-eng-3.1.0.json', true);
 
 interface MecabJdeppParsed {
   morphemes: Morpheme[];
@@ -401,13 +411,19 @@ const DUMB_CHOUONPU_MAP = (function makeChouonpuMap() {
   return m;
 })();
 
+export async function morphemesToFurigana(line: string, morphemes: Morpheme[],
+                                          overrides: Map<string, Furigana[]>): Promise<Furigana[][]> {
+  return morphemesToFuriganaCore(morphemes, overrides).then(o => checkFurigana(line, o))
+}
+
 /**
  * Try very hard to convert morphemes to furigana. `overrides` is a map of morpheme literal to the furigana you want.
  * This is useful because, e.g., Unidic always converts 日本 to ニッポン, and maybe you want overrides such that:
  * `overrides = new Map([['日本', [{ruby: '日', rt: 'に'}, {ruby: '本', rt: 'ほん'}]]])`
  * Note that `overrides` operates on a morpheme-by-morpheme basis.
  */
-async function morphemesToFurigana(morphemes: Morpheme[], overrides: Map<string, Furigana[]>): Promise<Furigana[][]> {
+export async function morphemesToFuriganaCore(morphemes: Morpheme[],
+                                              overrides: Map<string, Furigana[]>): Promise<Furigana[][]> {
   const furigana: Furigana[][] = await Promise.all(morphemes.map(async m => {
     const {lemma, lemmaReading, literal, pronunciation} = m;
     if (!hasKanji(literal)) { return [literal]; }
@@ -528,7 +544,7 @@ function furiganaToRuby(fs: Furigana[]): string {
 }
 
 // make sure furigana's rubys are verbatim the sentence
-export function checkFurigana(sentence: string, furigana: Furigana[][]): Furigana[][] {
+function checkFurigana(sentence: string, furigana: Furigana[][]): Furigana[][] {
   const rubys = flatten(furigana).map(toruby);
   if (rubys.join('').length >= sentence.length) { return furigana; }
   // whitespace or some other character was stripped. add it back!
@@ -551,9 +567,7 @@ export async function analyzeSentence(sentence: string, overrides?: Map<string, 
 
   // Promises
   const furiganaP =
-      hasKanji(sentence)
-          ? morphemesToFurigana(parsed.morphemes, overrides || new Map()).then(o => checkFurigana(sentence, o))
-          : undefined;
+      hasKanji(sentence) ? morphemesToFurigana(sentence, parsed.morphemes, overrides || new Map()) : undefined;
   const particlesConjphrasesP = identifyFillInBlanks(parsed.bunsetsus);
   const dictionaryHitsP = enumerateDictionaryHits(parsed.morphemes);
 
@@ -657,7 +671,7 @@ export async function linesToFurigana(lines: string[], buildDictionary = false) 
       continue;
     }
     const parsed = await mecabJdepp(line);
-    const furigana = await morphemesToFurigana(parsed.morphemes, overrides).then(o => checkFurigana(line, o));
+    const furigana = await morphemesToFurigana(line, parsed.morphemes, overrides);
     const lineHash = base64_to_base64url(createHash('md5').update(line).digest('base64'));
     ret.push(`<line id="hash-${lineHash}">` + furigana.map(furiganaToRuby).join('') + '</line>');
     lightweight.push({line, hash: lineHash, furigana});
