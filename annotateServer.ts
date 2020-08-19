@@ -17,7 +17,8 @@ import {ScoreHits} from './interfaces';
 
 const v1ReqSentence = t.type({sentence: t.string});
 const v1ReqSentences = t.type({sentences: t.array(t.string)});
-interface v1ResSentence {
+type v1ResSentence = string|v1ResSentenceAnalyzed;
+interface v1ResSentenceAnalyzed {
   furigana: Furigana[][];
   hits: ScoreHits[];
 }
@@ -53,7 +54,7 @@ app.post('/api/v1/sentences', async (req, res) => {
 
 async function handleSentence(sentence: string): Promise<v1ResSentence> {
   if (!hasKanji(sentence) && !hasKana(sentence)) {
-    const resBody: v1ResSentence = {furigana: [[sentence]], hits: []};
+    const resBody: v1ResSentence = sentence;
     return resBody;
   }
 
