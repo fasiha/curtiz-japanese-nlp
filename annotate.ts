@@ -1,5 +1,5 @@
 import {createHash} from 'crypto';
-import {dedupe, filterRight, flatmap, flatten, hasHiragana, hasKana, hasKanji, kata2hira} from 'curtiz-utils'
+import {dedupeLimit, filterRight, flatmap, flatten, hasHiragana, hasKana, hasKanji, kata2hira} from 'curtiz-utils'
 import {promises as pfs} from 'fs';
 import {
   Entry,
@@ -23,7 +23,7 @@ import {
 } from 'jmdict-simplified-node';
 import mkdirp from 'mkdirp';
 
-import {AnalysisResult, ConjugatedPhrase, ContextCloze, FillInTheBlanks, ScoreHit} from './interfaces';
+import {AnalysisResult, ConjugatedPhrase, ContextCloze, FillInTheBlanks, ScoreHit, ScoreHits} from './interfaces';
 import {addJdepp} from './jdepp';
 import {
   goodMorphemePredicate,
@@ -76,7 +76,8 @@ type WithSearchKanji<T> = T&{ searchKanji: string[]; };
  * }
  * ```
  */
-export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full = true): Promise<ScoreHit[][][]> {
+export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full = true,
+                                              limit = -1): Promise<ScoreHits[]> {
   const {db} = await jmdictPromise;
   const simplify = (c: ContextCloze) => (c.left || c.right) ? c : c.cloze;
 
@@ -88,22 +89,28 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
         searchKanji: unique(m.partOfSpeech[0].startsWith('symbol') ? [m.literal] : [m.literal, m.lemma]),
         searchReading: unique(morphemeToSearchLemma(m).concat(morphemeToStringLiteral(m, jmdictFurigana)))
       }));
-  const superhits: ScoreHit[][][] = [];
+  const superhits: ScoreHits[] = [];
   for (let startIdx = 0; startIdx < morphemes.length; startIdx++) {
+    const results: ScoreHits['results'] = [];
+
     if (!full) {
       const pos = morphemes[startIdx].partOfSpeech;
       if (pos[0].startsWith('supplementary') || pos[0].startsWith('auxiliary')) {
         // skip these
-        superhits.push([]);
+        superhits.push({startIdx, results});
         continue;
       }
     }
-    const hits: ScoreHit[][] = [];
+
     for (let endIdx = Math.min(morphemes.length, startIdx + 20); endIdx > startIdx; --endIdx) {
       const run = morphemes.slice(startIdx, endIdx);
-      const runLiteral =
-          simplify(generateContextClozed(bunsetsuToString(morphemes.slice(0, startIdx)), bunsetsuToString(run),
-                                         bunsetsuToString(morphemes.slice(endIdx))));
+      const runLiteralCore = bunsetsuToString(run);
+      const runLiteral = simplify(generateContextClozed(bunsetsuToString(morphemes.slice(0, startIdx)), runLiteralCore,
+                                                        bunsetsuToString(morphemes.slice(endIdx))));
+      if (!full) {
+        // skip particles like は and も if they're by themselves as an optimization
+        if (runLiteralCore.length === 1 && hasKana(runLiteralCore[0])) { continue; }
+      }
       let scored: ScoreHit[] = [];
 
       function helperSearchesHitsToScored(searches: string[], subhits: Word[][],
@@ -114,8 +121,8 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
             wordId: w.id,
             score: scoreMorphemeWord(run, searches[i], searchKey, w),
             search: searches[i],
-            run: runLiteral,
-            runIdx: [startIdx, endIdx - 1],
+            // run: runLiteral,
+            // runIdx: [startIdx, endIdx - 1],
           };
           return ret;
         })));
@@ -134,9 +141,11 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
       }
 
       scored.sort((a, b) => b.score - a.score);
-      if (scored.length > 0) { hits.push(dedupe(scored, o => o.wordId)); }
+      if (scored.length > 0) {
+        results.push({endIdx, run: runLiteral, results: dedupeLimit(scored, o => o.wordId, limit)});
+      }
     }
-    superhits.push(hits);
+    superhits.push({startIdx, results});
   }
   return superhits;
 }
@@ -627,14 +636,16 @@ export async function linesToCurtizMarkdown(lines: string[]) {
     {
       ret.push('  - Vocab');
       for (const fromStart of results.dictionaryHits) {
-        for (const fromEnd of fromStart) {
-          ret.push(`  - Vocab: ${fromEnd[0].search} INFO`);
-          const hits = fromEnd.slice(0, MAX_LINES);
+        for (const fromEnd of fromStart.results) {
+          ret.push(`  - Vocab: ${contextClozeOrStringToString(fromEnd.run)} INFO`);
+          const hits = fromEnd.results.slice(0, MAX_LINES);
           const words = await scoreHitsToWords(hits);
           for (const [wi, w] of words.entries()) {
-            ret.push('    - ' + contextClozeOrStringToString(hits[wi].run) + ' | ' + displayWordLight(w, tags));
+            ret.push('    - ' + hits[wi].search + ' | ' + displayWordLight(w, tags));
           }
-          if (fromEnd.length > MAX_LINES) { ret.push(`    - (… ${fromEnd.length - MAX_LINES} omitted) INFO`); }
+          if (fromEnd.results.length > MAX_LINES) {
+            ret.push(`    - (… ${fromEnd.results.length - MAX_LINES} omitted) INFO`);
+          }
         }
       }
     }
@@ -679,12 +690,13 @@ export async function linesToFurigana(lines: string[], buildDictionary = false) 
     if (buildDictionary) {
       const sidecarFile = `${parentDir}/line-${lineHash}.json`;
       if (!(await fileExists(sidecarFile))) {
-        const dictHits = await enumerateDictionaryHits(parsed.morphemes, false);
+        const dictHits = await enumerateDictionaryHits(parsed.morphemes, false, 10);
         for (let i = 0; i < dictHits.length; i++) {
-          for (let j = 0; j < dictHits[i].length; j++) {
-            const hits = dictHits[i][j].slice(0, 10);
-            const words = await scoreHitsToWords(hits);
-            dictHits[i][j] = hits.map((h, hi) => ({...h, summary: displayWordLight(words[hi], tags)}));
+          for (let j = 0; j < dictHits[i].results.length; j++) {
+            const words = await scoreHitsToWords(dictHits[i].results[j].results);
+            for (let k = 0; k < words.length; k++) {
+              dictHits[i].results[j].results[k].summary = displayWordLight(words[k], tags);
+            }
           }
         }
         await pfs.writeFile(sidecarFile,

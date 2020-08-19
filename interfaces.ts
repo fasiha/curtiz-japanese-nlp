@@ -16,8 +16,15 @@ export interface ScoreHit {
   wordId: Word['id'];
   score: number;
   search: string;
-  run: string|ContextCloze;
-  runIdx: [number, number];
+  summary?: string;
+}
+export interface ScoreHits {
+  startIdx: number;
+  results: {
+    endIdx: number,
+    run: string|ContextCloze,
+    results: ScoreHit[],
+  }[];
 }
 export interface ConjugatedPhrase {
   cloze: ContextCloze;
@@ -35,5 +42,5 @@ export interface ContextCloze {
 export interface AnalysisResult {
   furigana?: Furigana[][];
   particlesConjphrases: FillInTheBlanks;
-  dictionaryHits: ScoreHit[][][];
+  dictionaryHits: ScoreHits[];
 }

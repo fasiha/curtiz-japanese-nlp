@@ -13,12 +13,12 @@ import {
   morphemesToFurigana,
   scoreHitsToWords
 } from './annotate';
-import {ScoreHit} from './interfaces';
+import {ScoreHits} from './interfaces';
 
 const v1ReqDict = t.type({sentence: t.string});
 interface v1ResDict {
   furigana: Furigana[][];
-  hits: (ScoreHit&{summary?: string})[][][];
+  hits: ScoreHits[];
 }
 const tagsPromise = jmdictPromise.then(({db}) => db)
                         .then(db => getField(db, 'tags'))
@@ -44,13 +44,14 @@ app.post('/api/v1/dict', async (req, res) => {
 
   const parsed = await mecabJdepp(sentence);
   const furigana = await morphemesToFurigana(sentence, parsed.morphemes, overrides);
-  const dictHits = await enumerateDictionaryHits(parsed.morphemes, false);
   const tags = await tagsPromise;
+  const dictHits = await enumerateDictionaryHits(parsed.morphemes, false, 10);
   for (let i = 0; i < dictHits.length; i++) {
-    for (let j = 0; j < dictHits[i].length; j++) {
-      const hits = dictHits[i][j].slice(0, 10);
-      const words = await scoreHitsToWords(hits);
-      dictHits[i][j] = hits.map((h, hi) => ({...h, summary: displayWordLight(words[hi], tags)}));
+    for (let j = 0; j < dictHits[i].results.length; j++) {
+      const words = await scoreHitsToWords(dictHits[i].results[j].results);
+      for (let k = 0; k < words.length; k++) {
+        dictHits[i].results[j].results[k].summary = displayWordLight(words[k], tags);
+      }
     }
   }
   const resBody: v1ResDict = {furigana, hits: dictHits};
