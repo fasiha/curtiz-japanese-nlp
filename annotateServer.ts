@@ -15,8 +15,9 @@ import {
 } from './annotate';
 import {ScoreHits} from './interfaces';
 
-const v1ReqDict = t.type({sentence: t.string});
-interface v1ResDict {
+const v1ReqSentence = t.type({sentence: t.string});
+const v1ReqSentences = t.type({sentences: t.array(t.string)});
+interface v1ResSentence {
   furigana: Furigana[][];
   hits: ScoreHits[];
 }
@@ -28,18 +29,32 @@ const overrides: Map<string, Furigana[]> = new Map();
 const app = express();
 app.use(require('cors')({origin: true, credentials: true}));
 app.use(require('body-parser').json());
-app.post('/api/v1/dict', async (req, res) => {
-  const body = v1ReqDict.decode(req.body);
+app.post('/api/v1/sentence', async (req, res) => {
+  const body = v1ReqSentence.decode(req.body);
   if (!isRight(body)) {
     res.status(400).json('bad payload');
     return;
   }
   const {sentence} = body.right;
+  res.json(await handleSentence(sentence));
+});
 
+app.post('/api/v1/sentences', async (req, res) => {
+  const body = v1ReqSentences.decode(req.body);
+  if (!isRight(body)) {
+    res.status(400).json('bad payload');
+    return;
+  }
+  const {sentences} = body.right;
+  const resBody: v1ResSentence[] = [];
+  for (const sentence of sentences) { resBody.push(await handleSentence(sentence)); }
+  res.json(resBody);
+});
+
+async function handleSentence(sentence: string): Promise<v1ResSentence> {
   if (!hasKanji(sentence) && !hasKana(sentence)) {
-    const resBody: v1ResDict = {furigana: [[sentence]], hits: []};
-    res.json(resBody);
-    return
+    const resBody: v1ResSentence = {furigana: [[sentence]], hits: []};
+    return resBody;
   }
 
   const parsed = await mecabJdepp(sentence);
@@ -54,9 +69,9 @@ app.post('/api/v1/dict', async (req, res) => {
       }
     }
   }
-  const resBody: v1ResDict = {furigana, hits: dictHits};
-  res.json(resBody);
-});
+  const resBody: v1ResSentence = {furigana, hits: dictHits};
+  return resBody;
+}
 
 const port = 8133;
 app.listen(port, () => console.log(`Annotation app listening at http://127.0.0.1:${port}`));
