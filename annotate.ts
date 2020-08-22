@@ -102,7 +102,7 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
       }
     }
 
-    for (let endIdx = Math.min(morphemes.length, startIdx + 20); endIdx > startIdx; --endIdx) {
+    for (let endIdx = Math.min(morphemes.length, startIdx + 5); endIdx > startIdx; --endIdx) {
       const run = morphemes.slice(startIdx, endIdx);
       const runLiteralCore = bunsetsuToString(run);
       const runLiteral = simplify(generateContextClozed(bunsetsuToString(morphemes.slice(0, startIdx)), runLiteralCore,
