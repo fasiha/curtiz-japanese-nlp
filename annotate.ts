@@ -421,7 +421,7 @@ const DUMB_CHOUONPU_MAP = (function makeChouonpuMap() {
 })();
 
 export async function morphemesToFurigana(line: string, morphemes: Morpheme[],
-                                          overrides: Map<string, Furigana[]>): Promise<Furigana[][]> {
+                                          overrides: Partial<Record<string, Furigana[]>>): Promise<Furigana[][]> {
   return morphemesToFuriganaCore(morphemes, overrides).then(o => checkFurigana(line, o))
 }
 
@@ -432,12 +432,12 @@ export async function morphemesToFurigana(line: string, morphemes: Morpheme[],
  * Note that `overrides` operates on a morpheme-by-morpheme basis.
  */
 export async function morphemesToFuriganaCore(morphemes: Morpheme[],
-                                              overrides: Map<string, Furigana[]>): Promise<Furigana[][]> {
+                                              overrides: Partial<Record<string, Furigana[]>>): Promise<Furigana[][]> {
   const furigana: Furigana[][] = await Promise.all(morphemes.map(async m => {
     const {lemma, lemmaReading, literal, pronunciation} = m;
     if (!hasKanji(literal)) { return [literal]; }
     {
-      const hit = overrides.get(literal);
+      const hit = overrides[literal];
       if (hit) { return hit; }
     }
 
@@ -571,12 +571,12 @@ function checkFurigana(sentence: string, furigana: Furigana[][]): Furigana[][] {
 }
 function toruby(f: Furigana) { return typeof f === 'string' ? f : f.ruby; }
 
-export async function analyzeSentence(sentence: string, overrides?: Map<string, Furigana[]>): Promise<AnalysisResult> {
+export async function analyzeSentence(sentence: string,
+                                      overrides: Partial<Record<string, Furigana[]>> = {}): Promise<AnalysisResult> {
   const parsed = await mecabJdepp(sentence);
 
   // Promises
-  const furiganaP =
-      hasKanji(sentence) ? morphemesToFurigana(sentence, parsed.morphemes, overrides || new Map()) : undefined;
+  const furiganaP = hasKanji(sentence) ? morphemesToFurigana(sentence, parsed.morphemes, overrides) : undefined;
   const particlesConjphrasesP = identifyFillInBlanks(parsed.bunsetsus);
   const dictionaryHitsP = enumerateDictionaryHits(parsed.morphemes);
 
@@ -606,7 +606,7 @@ export async function linesToCurtizMarkdown(lines: string[]) {
   const tags: Record<string, string> = JSON.parse(await getField(db, 'tags'));
 
   const MAX_LINES = 8;
-  const overrides: Map<string, Furigana[]> = new Map();
+  const overrides: Record<string, Furigana[]> = {};
   const startRegexp = /^-\s+@\s+/;
   for (const line of lines) {
     if (!startRegexp.test(line)) {
@@ -664,7 +664,7 @@ export async function linesToFurigana(lines: string[], buildDictionary = false) 
   const tags: Record<string, string> = JSON.parse(await getField(db, 'tags'));
 
   const ret: string[] = [];
-  const overrides: Map<string, Furigana[]> = new Map();
+  const overrides: Record<string, Furigana[]> = {};
 
   const parentDir = process.cwd() + '/dict-hits-per-line';
   await mkdirp(parentDir);

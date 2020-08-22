@@ -15,8 +15,10 @@ import {
 } from './annotate';
 import {ScoreHits} from './interfaces';
 
-const v1ReqSentence = t.type({sentence: t.string});
-const v1ReqSentences = t.type({sentences: t.array(t.string)});
+const TFurigana = t.array(t.union([t.string, t.type({ruby: t.string, rt: t.string})]));
+const PartialOverrides = t.partial({overrides: t.record(t.string, TFurigana)});
+const v1ReqSentence = t.intersection([t.type({sentence: t.string}), PartialOverrides]);
+const v1ReqSentences = t.intersection([t.type({sentences: t.array(t.string)}), PartialOverrides]);
 type v1ResSentence = string|v1ResSentenceAnalyzed;
 interface v1ResSentenceAnalyzed {
   furigana: Furigana[][];
@@ -25,7 +27,6 @@ interface v1ResSentenceAnalyzed {
 const tagsPromise = jmdictPromise.then(({db}) => db)
                         .then(db => getField(db, 'tags'))
                         .then(raw => JSON.parse(raw) as Record<string, string>);
-const overrides: Map<string, Furigana[]> = new Map();
 
 const app = express();
 app.use(require('cors')({origin: true, credentials: true}));
@@ -36,8 +37,9 @@ app.post('/api/v1/sentence', async (req, res) => {
     res.status(400).json('bad payload');
     return;
   }
-  const {sentence} = body.right;
-  res.json(await handleSentence(sentence));
+  const {sentence, overrides} = body.right;
+  // const overrides = body.right
+  res.json(await handleSentence(sentence, overrides || {}));
 });
 
 app.post('/api/v1/sentences', async (req, res) => {
@@ -46,13 +48,13 @@ app.post('/api/v1/sentences', async (req, res) => {
     res.status(400).json('bad payload');
     return;
   }
-  const {sentences} = body.right;
+  const {sentences, overrides} = body.right;
   const resBody: v1ResSentence[] = [];
-  for (const sentence of sentences) { resBody.push(await handleSentence(sentence)); }
+  for (const sentence of sentences) { resBody.push(await handleSentence(sentence, overrides || {})); }
   res.json(resBody);
 });
 
-async function handleSentence(sentence: string): Promise<v1ResSentence> {
+async function handleSentence(sentence: string, overrides: Record<string, Furigana[]>): Promise<v1ResSentence> {
   if (!hasKanji(sentence) && !hasKana(sentence)) {
     const resBody: v1ResSentence = sentence;
     return resBody;
