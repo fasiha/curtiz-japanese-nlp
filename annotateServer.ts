@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 import {hasKana, hasKanji} from 'curtiz-utils';
 import express from 'express';
 import {isRight} from 'fp-ts/lib/Either';
@@ -14,6 +16,7 @@ import {
   scoreHitsToWords
 } from './annotate';
 import {ScoreHits} from './interfaces';
+import {invokeMecab, maybeMorphemesToMorphemes, parseMecab} from './mecabUnidic';
 
 const TFurigana = t.array(t.union([t.string, t.type({ruby: t.string, rt: t.string})]));
 const PartialOverrides = t.partial({overrides: t.record(t.string, TFurigana)});
@@ -60,10 +63,11 @@ async function handleSentence(sentence: string, overrides: Record<string, Furiga
     return resBody;
   }
 
-  const parsed = await mecabJdepp(sentence);
-  const furigana = await morphemesToFurigana(sentence, parsed.morphemes, overrides);
+  let morphemes =
+      maybeMorphemesToMorphemes(parseMecab(sentence, await invokeMecab(sentence, NATIVE))[0].filter(o => !!o));
+  const furigana = await morphemesToFurigana(sentence, morphemes, overrides);
   const tags = await tagsPromise;
-  const dictHits = await enumerateDictionaryHits(parsed.morphemes, false, 10);
+  const dictHits = await enumerateDictionaryHits(morphemes, false, 10);
   for (let i = 0; i < dictHits.length; i++) {
     for (let j = 0; j < dictHits[i].results.length; j++) {
       const words = await scoreHitsToWords(dictHits[i].results[j].results);
@@ -76,5 +80,6 @@ async function handleSentence(sentence: string, overrides: Record<string, Furiga
   return resBody;
 }
 
+const NATIVE = !process.env["NODE_MECAB"];
 const port = 8133;
 app.listen(port, () => console.log(`Annotation app listening at http://127.0.0.1:${port}`));

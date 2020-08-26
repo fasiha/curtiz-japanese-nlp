@@ -246,9 +246,15 @@ const partOfSpeechObj = keysToObj(partOfSpeechKeys);
 const inflectionObj = keysToObj(inflectionKeys);
 const inflectionTypeObj = keysToObj(inflectionTypeKeys);
 
-export function invokeMecab(text: string): Promise<string> {
+/**
+ *
+ * @param text raw text to parse
+ * @param native use natively-compiled MeCab (C++ executable) or Node version
+ */
+export function invokeMecab(text: string, native = true): Promise<string> {
   return new Promise((resolve, reject) => {
-    let spawned = spawn('mecab', ['-d', '/usr/local/lib/mecab/dic/unidic']);
+    let spawned = native ? spawn('mecab', ['-d', '/usr/local/lib/mecab/dic/unidic'])
+                         : spawn('npx', ['mecab-emscripten-node', '-d', '/usr/local/lib/mecab/dic/unidic']);
     spawned.stdin.write(text);
     spawned.stdin.write('\n'); // necessary, otherwise MeCab says `input-buffer overflow.`
     spawned.stdin.end();
@@ -352,8 +358,13 @@ export function goodMorphemePredicate(m: Morpheme): boolean {
          !(m.partOfSpeech[0] === 'particle' && m.partOfSpeech[1] === 'phrase_final');
 }
 
-export async function parse(text: string): Promise<Morpheme[][]> {
-  const m = parseMecab(text, await invokeMecab(text.trim()));
+/**
+ *
+ * @param text raw text to parse
+ * @param native use natively-compiled MeCab (C++ executable) or Node version
+ */
+export async function parse(text: string, native = true): Promise<Morpheme[][]> {
+  const m = parseMecab(text, await invokeMecab(text.trim(), native));
   return m.map(v => v.filter(x => x !== null) as Morpheme[])
 }
 
@@ -392,7 +403,13 @@ if (require.main === module) {
                  .join('\n')
                  .replace(/\r/g, '');
     }
-    const parsed = parseMecab(text, await invokeMecab(text.trim()));
+    const parsed = parseMecab(text, await invokeMecab(text.trim(), true));
+    {
+      const assert = require('assert');
+      const parsedNode = parseMecab(text, await invokeMecab(text.trim(), false));
+      assert(parsedNode.map(ultraCompressMorphemes).join('\n') === parsed.map(ultraCompressMorphemes).join('\n'),
+             'Native MeCab and mecab-emscripten-node must produce same output');
+    }
     // Output
     const table = flatten(parsed.map(s => s.map(m => {
       return m ? [m.literal, m.pronunciation, m.lemmaReading, m.lemma, m.partOfSpeech.join(ELEMENTSEP),
