@@ -9,7 +9,8 @@
   "typings": "index.ts",
   "scripts": {
     "test": "tape tests/test*.js",
-    "build": "tsc -p ."
+    "build": "tsc -p .",
+    "start": "node annotateServer.js"
   },
   "keywords": [
     "mecab",
