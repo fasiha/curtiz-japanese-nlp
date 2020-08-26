@@ -45,14 +45,15 @@ export {
 export {getField} from 'jmdict-simplified-node';
 
 export const jmdictFuriganaPromise = setupJmdictFurigana()
-export const jmdictPromise = setupJmdict('jmdict-simplified', 'jmdict-eng-3.1.0.json', true);
+export const jmdictPromise =
+    setupJmdict('jmdict-simplified', process.env['JMDICT_SIMPLIFIED_JSON'] || 'jmdict-eng-3.1.0.json', true);
 
 interface MecabJdeppParsed {
   morphemes: Morpheme[];
   bunsetsus: Morpheme[][];
 }
-export async function mecabJdepp(sentence: string, native = true): Promise<MecabJdeppParsed> {
-  let rawMecab = await invokeMecab(sentence, native);
+export async function mecabJdepp(sentence: string): Promise<MecabJdeppParsed> {
+  let rawMecab = await invokeMecab(sentence);
   let morphemes = maybeMorphemesToMorphemes(parseMecab(sentence, rawMecab)[0].filter(o => !!o));
   let bunsetsus = await addJdepp(rawMecab, morphemes);
   return {morphemes, bunsetsus};
@@ -571,9 +572,9 @@ function checkFurigana(sentence: string, furigana: Furigana[][]): Furigana[][] {
 }
 function toruby(f: Furigana) { return typeof f === 'string' ? f : f.ruby; }
 
-export async function analyzeSentence(sentence: string, overrides: Partial<Record<string, Furigana[]>> = {},
-                                      native = true): Promise<AnalysisResult> {
-  const parsed = await mecabJdepp(sentence, native);
+export async function analyzeSentence(sentence: string,
+                                      overrides: Partial<Record<string, Furigana[]>> = {}): Promise<AnalysisResult> {
+  const parsed = await mecabJdepp(sentence);
 
   // Promises
   const furiganaP = hasKanji(sentence) ? morphemesToFurigana(sentence, parsed.morphemes, overrides) : undefined;
@@ -659,7 +660,7 @@ function base64_to_base64url(base64: string) {
 }
 async function fileExists(file: string) { return pfs.access(file).then(() => true).catch(() => false); }
 
-export async function linesToFurigana(lines: string[], buildDictionary = false, native = true) {
+export async function linesToFurigana(lines: string[], buildDictionary = false) {
   const {db} = await jmdictPromise;
   const tags: Record<string, string> = JSON.parse(await getField(db, 'tags'));
 
@@ -681,7 +682,7 @@ export async function linesToFurigana(lines: string[], buildDictionary = false, 
       lightweight.push(line);
       continue;
     }
-    const parsed = await mecabJdepp(line, native);
+    const parsed = await mecabJdepp(line);
     const furigana = await morphemesToFurigana(line, parsed.morphemes, overrides);
     const lineHash = base64_to_base64url(createHash('md5').update(line).digest('base64'));
     ret.push(`<line id="hash-${lineHash}">` + furigana.map(furiganaToRuby).join('') + '</line>');

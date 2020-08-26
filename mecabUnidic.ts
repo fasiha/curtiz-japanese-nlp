@@ -246,12 +246,8 @@ const partOfSpeechObj = keysToObj(partOfSpeechKeys);
 const inflectionObj = keysToObj(inflectionKeys);
 const inflectionTypeObj = keysToObj(inflectionTypeKeys);
 
-/**
- *
- * @param text raw text to parse
- * @param native use natively-compiled MeCab (C++ executable) or Node version
- */
-export function invokeMecab(text: string, native = true): Promise<string> {
+export function invokeMecab(text: string): Promise<string> {
+  const native = !(process.env["NODE_MECAB"]);
   return new Promise((resolve, reject) => {
     let spawned = native ? spawn('mecab', ['-d', '/usr/local/lib/mecab/dic/unidic'])
                          : spawn('npx', ['mecab-emscripten-node', '-d', '/usr/local/lib/mecab/dic/unidic']);
@@ -358,13 +354,8 @@ export function goodMorphemePredicate(m: Morpheme): boolean {
          !(m.partOfSpeech[0] === 'particle' && m.partOfSpeech[1] === 'phrase_final');
 }
 
-/**
- *
- * @param text raw text to parse
- * @param native use natively-compiled MeCab (C++ executable) or Node version
- */
-export async function parse(text: string, native = true): Promise<Morpheme[][]> {
-  const m = parseMecab(text, await invokeMecab(text.trim(), native));
+export async function parse(text: string): Promise<Morpheme[][]> {
+  const m = parseMecab(text, await invokeMecab(text.trim()));
   return m.map(v => v.filter(x => x !== null) as Morpheme[])
 }
 
@@ -403,18 +394,21 @@ if (require.main === module) {
                  .join('\n')
                  .replace(/\r/g, '');
     }
-    const parsed = parseMecab(text, await invokeMecab(text.trim(), true));
-    {
-      const assert = require('assert');
-      const parsedNode = parseMecab(text, await invokeMecab(text.trim(), false));
-      assert(parsedNode.map(ultraCompressMorphemes).join('\n') === parsed.map(ultraCompressMorphemes).join('\n'),
-             'Native MeCab and mecab-emscripten-node must produce same output');
-    }
+    delete process.env["NODE_MECAB"];
+    const parsed = parseMecab(text, await invokeMecab(text.trim()));
     // Output
     const table = flatten(parsed.map(s => s.map(m => {
       return m ? [m.literal, m.pronunciation, m.lemmaReading, m.lemma, m.partOfSpeech.join(ELEMENTSEP),
                 (m.inflectionType || []).join(ELEMENTSEP), (m.inflection || []).join(ELEMENTSEP)] : [];
     })));
     printMarkdownTable(table, 'Literal,Pron.,Lemma Read.,Lemma,PoS,Infl. Type,Infl.'.split(','));
+    {
+      const assert = require('assert');
+      process.env["NODE_MECAB"] = '1';
+
+      const parsedNode = parseMecab(text, await invokeMecab(text.trim()));
+      assert(parsedNode.map(ultraCompressMorphemes).join('\n') === parsed.map(ultraCompressMorphemes).join('\n'),
+             'Native MeCab and mecab-emscripten-node must produce same output');
+    }
   })();
 }

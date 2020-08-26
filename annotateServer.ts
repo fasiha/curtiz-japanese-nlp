@@ -63,8 +63,7 @@ async function handleSentence(sentence: string, overrides: Record<string, Furiga
     return resBody;
   }
 
-  let morphemes =
-      maybeMorphemesToMorphemes(parseMecab(sentence, await invokeMecab(sentence, NATIVE))[0].filter(o => !!o));
+  let morphemes = maybeMorphemesToMorphemes(parseMecab(sentence, await invokeMecab(sentence))[0].filter(o => !!o));
   const furigana = await morphemesToFurigana(sentence, morphemes, overrides);
   const tags = await tagsPromise;
   const dictHits = await enumerateDictionaryHits(morphemes, false, 10);
@@ -82,4 +81,4 @@ async function handleSentence(sentence: string, overrides: Record<string, Furiga
 
 const NATIVE = !process.env["NODE_MECAB"];
 const port = process.env['PORT'] || 8133;
-app.listen(port, () => console.log(`Annotation app listening at http://127.0.0.1:${port}`));
+app.listen(port, () => console.log(`Annotation app listening at http://127.0.0.1:${port}, NATIVE mecab=${NATIVE}`));
