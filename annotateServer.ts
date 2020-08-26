@@ -81,5 +81,5 @@ async function handleSentence(sentence: string, overrides: Record<string, Furiga
 }
 
 const NATIVE = !process.env["NODE_MECAB"];
-const port = 8133;
+const port = process.env['PORT'] || 8133;
 app.listen(port, () => console.log(`Annotation app listening at http://127.0.0.1:${port}`));
