@@ -7,3 +7,6 @@ JmdictFurigana.txt*
 *.md
 *.js
 *.zip
+
+unidic/
+jmdict-simplified/
