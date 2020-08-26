@@ -46,7 +46,7 @@ export {getField} from 'jmdict-simplified-node';
 
 export const jmdictFuriganaPromise = setupJmdictFurigana()
 export const jmdictPromise =
-    setupJmdict('jmdict-simplified', process.env['JMDICT_SIMPLIFIED_JSON'] || 'jmdict-eng-3.1.0.json', true);
+    setupJmdict('jmdict-simplified', process.env['JMDICT_SIMPLIFIED_JSON'] || 'jmdict-eng-3.1.0.json', true, true);
 
 interface MecabJdeppParsed {
   morphemes: Morpheme[];
