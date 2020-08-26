@@ -13,7 +13,7 @@
   "scripts": {
     "test": "tape tests/test*.js",
     "build": "tsc -p .",
-    "start": "npm run build && node annotateServer.js"
+    "start": "node annotateServer.js"
   },
   "keywords": [
     "mecab",
