@@ -17,6 +17,7 @@ import {
 } from './annotate';
 import {ScoreHits} from './interfaces';
 import {invokeMecab, maybeMorphemesToMorphemes, parseMecab} from './mecabUnidic';
+import {setupSimple as kanjidicSetup, SimpleCharacter} from './kanjidic';
 
 const TFurigana = t.array(t.union([t.string, t.type({ruby: t.string, rt: t.string})]));
 const PartialOverrides = t.partial({overrides: t.record(t.string, TFurigana)});
@@ -26,10 +27,13 @@ type v1ResSentence = string|v1ResSentenceAnalyzed;
 interface v1ResSentenceAnalyzed {
   furigana: Furigana[][];
   hits: ScoreHits[];
+  kanjidic: Record<string, SimpleCharacter>;
 }
 const tagsPromise = jmdictPromise.then(({db}) => db)
                         .then(db => getField(db, 'tags'))
                         .then(raw => JSON.parse(raw) as Record<string, string>);
+
+const kanjidicPromise = kanjidicSetup();
 
 const app = express();
 app.use(require('cors')({origin: true, credentials: true}));
@@ -75,7 +79,11 @@ async function handleSentence(sentence: string, overrides: Record<string, Furiga
       }
     }
   }
-  const resBody: v1ResSentence = {furigana, hits: dictHits};
+
+  const kanjidic = await kanjidicPromise;
+  const kanjidicHits = Object.fromEntries(sentence.split('').filter(c => c in kanjidic).map(c => [c, kanjidic[c]]));
+
+  const resBody: v1ResSentence = {furigana, hits: dictHits, kanjidic: kanjidicHits};
   return resBody;
 }
 
