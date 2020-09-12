@@ -1,5 +1,6 @@
 require('dotenv').config();
 
+import {readFileSync} from 'fs';
 import {hasKana, hasKanji} from 'curtiz-utils';
 import express from 'express';
 import {isRight} from 'fp-ts/lib/Either';
@@ -27,13 +28,16 @@ type v1ResSentence = string|v1ResSentenceAnalyzed;
 interface v1ResSentenceAnalyzed {
   furigana: Furigana[][];
   hits: ScoreHits[];
-  kanjidic: Record<string, SimpleCharacter>;
+  kanjidic: Record<string, SimpleCharacter&{dependencies: SearchMapped<SimpleCharacter|null>[]}>;
 }
 const tagsPromise = jmdictPromise.then(({db}) => db)
                         .then(db => getField(db, 'tags'))
                         .then(raw => JSON.parse(raw) as Record<string, string>);
 
 const kanjidicPromise = kanjidicSetup();
+
+export const wanikaniGraph: {[k: string]: string[]}&{metadata: Record<string, string>} =
+    JSON.parse(readFileSync('wanikani-kanji-graph.json', 'utf8'));
 
 const app = express();
 app.use(require('cors')({origin: true, credentials: true}));
@@ -81,12 +85,44 @@ async function handleSentence(sentence: string, overrides: Record<string, Furiga
   }
 
   const kanjidic = await kanjidicPromise;
-  const kanjidicHits = Object.fromEntries(sentence.split('').filter(c => c in kanjidic).map(c => [c, kanjidic[c]]));
+  const kanjidicHits =
+      Object.fromEntries(sentence.split('')
+                             .filter(c => c in kanjidic)
+                             .map(c => [c, {
+                                    ...kanjidic[c],
+                                    dependencies: searchMap(treeSearch(wanikaniGraph, c),
+                                                            c => (kanjidic[c] || null) as SimpleCharacter | null)
+                                                      .children
+                                  }]));
 
   const resBody: v1ResSentence = {furigana, hits: dictHits, kanjidic: kanjidicHits};
   return resBody;
 }
 
-const NATIVE = !process.env["NODE_MECAB"];
-const port = process.env['PORT'] || 8133;
-app.listen(port, () => console.log(`Annotation app listening at http://127.0.0.1:${port}, NATIVE mecab=${NATIVE}`));
+type Tree = Record<string, string[]>;
+type Search = {
+  node: string,
+  children: Search[]
+};
+export function treeSearch(tree: Tree, node: string, seen: Set<string> = new Set()): Search {
+  seen.add(node);
+  const children = (tree[node] || []).filter(node => !seen.has(node));
+  for (const child of children) { seen.add(child); }
+
+  return { node, children: children.map(node => treeSearch(tree, node, seen)) }
+}
+
+type SearchMapped<T> = {
+  node: string,
+  nodeMapped: T,
+  children: SearchMapped<T>[],
+};
+export function searchMap<T>(search: Search, f: (s: string) => T): SearchMapped<T> {
+  return {node: search.node, nodeMapped: f(search.node), children: search.children.map(node => searchMap(node, f))};
+}
+
+if (require.main === module) {
+  const NATIVE = !process.env["NODE_MECAB"];
+  const port = process.env['PORT'] || 8133;
+  app.listen(port, () => console.log(`Annotation app listening at http://127.0.0.1:${port}, NATIVE mecab=${NATIVE}`));
+}
