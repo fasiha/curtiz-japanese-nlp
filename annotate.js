@@ -27,6 +27,11 @@ var jmdict_simplified_node_2 = require("jmdict-simplified-node");
 exports.getField = jmdict_simplified_node_2.getField;
 exports.jmdictFuriganaPromise = jmdict_furigana_node_1.setup(process.env['JMDICT_FURIGANA']);
 exports.jmdictPromise = jmdict_simplified_node_1.setup(process.env['JMDICT_SIMPLIFIED_LEVELDB'] || 'jmdict-simplified', process.env['JMDICT_SIMPLIFIED_JSON'] || 'jmdict-eng-3.1.0.json', true, true);
+/**
+ * Without this limit on how many Leveldb hits jmdict-simplified-node will get, things slow way down. Not much loss in
+ * usefulness with this set to 20.
+ */
+const DICTIONARY_LIMIT = 20;
 function mecabJdepp(sentence) {
     return __awaiter(this, void 0, void 0, function* () {
         let rawMecab = yield mecabUnidic_1.invokeMecab(sentence);
@@ -96,13 +101,13 @@ function enumerateDictionaryHits(plainMorphemes, full = true, limit = -1) {
                 // Search reading
                 {
                     const readingSearches = forkingPaths(run.map(m => m.searchReading)).map(v => v.join(''));
-                    const readingSubhits = yield Promise.all(readingSearches.map(search => jmdict_simplified_node_1.readingBeginning(db, search)));
+                    const readingSubhits = yield Promise.all(readingSearches.map(search => jmdict_simplified_node_1.readingBeginning(db, search, DICTIONARY_LIMIT)));
                     scored = helperSearchesHitsToScored(readingSearches, readingSubhits, 'kana');
                 }
                 // Search literals if needed, this works around MeCab mis-readings like お父さん->おちちさん
                 {
                     const kanjiSearches = forkingPaths(run.map(m => m.searchKanji)).map(v => v.join('')).filter(curtiz_utils_1.hasKanji);
-                    const kanjiSubhits = yield Promise.all(kanjiSearches.map(search => jmdict_simplified_node_1.kanjiBeginning(db, search)));
+                    const kanjiSubhits = yield Promise.all(kanjiSearches.map(search => jmdict_simplified_node_1.kanjiBeginning(db, search, DICTIONARY_LIMIT)));
                     scored.push(...helperSearchesHitsToScored(kanjiSearches, kanjiSubhits, 'kanji'));
                 }
                 scored.sort((a, b) => b.score - a.score);

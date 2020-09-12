@@ -48,6 +48,12 @@ export const jmdictFuriganaPromise = setupJmdictFurigana(process.env['JMDICT_FUR
 export const jmdictPromise = setupJmdict(process.env['JMDICT_SIMPLIFIED_LEVELDB'] || 'jmdict-simplified',
                                          process.env['JMDICT_SIMPLIFIED_JSON'] || 'jmdict-eng-3.1.0.json', true, true);
 
+/**
+ * Without this limit on how many Leveldb hits jmdict-simplified-node will get, things slow way down. Not much loss in
+ * usefulness with this set to 20.
+ */
+const DICTIONARY_LIMIT = 20;
+
 interface MecabJdeppParsed {
   morphemes: Morpheme[];
   bunsetsus: Morpheme[][];
@@ -131,13 +137,15 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
       // Search reading
       {
         const readingSearches = forkingPaths(run.map(m => m.searchReading)).map(v => v.join(''));
-        const readingSubhits = await Promise.all(readingSearches.map(search => readingBeginning(db, search)));
+        const readingSubhits =
+            await Promise.all(readingSearches.map(search => readingBeginning(db, search, DICTIONARY_LIMIT)));
         scored = helperSearchesHitsToScored(readingSearches, readingSubhits, 'kana');
       }
       // Search literals if needed, this works around MeCab mis-readings like お父さん->おちちさん
       {
         const kanjiSearches = forkingPaths(run.map(m => m.searchKanji)).map(v => v.join('')).filter(hasKanji);
-        const kanjiSubhits = await Promise.all(kanjiSearches.map(search => kanjiBeginning(db, search)));
+        const kanjiSubhits =
+            await Promise.all(kanjiSearches.map(search => kanjiBeginning(db, search, DICTIONARY_LIMIT)));
         scored.push(...helperSearchesHitsToScored(kanjiSearches, kanjiSubhits, 'kanji'));
       }
 
