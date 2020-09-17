@@ -497,19 +497,83 @@ export async function morphemesToFuriganaCore(morphemes: Morpheme[],
     // if (lemmaReadingHit) { return lemmaReadingHit.furigana; }
 
     // We couldn't rely on JMDictFurigana to help us out. The best we can do now is to use MeCab's parsing.
-    // For example: literal="帰っ" and rt="かえっ".
+    // For example: literal="帰っ" and rt="かえっ". Also 鍛え直し vs きたえなおし.
+    // In general, literal can mix kanji and kana, rt will have only kana.
+
     {
       const rt = morphemeToStringLiteral(m)[0];
       if (rt === literal) { return [literal]; }
-
-      // find matching text at the start and end of `literal` and `rt`, and pull them off as strings.
-      const prePost = prePostMatches(literal, rt);
-      const ret = [prePost.pre, {ruby: prePost.middleA, rt: prePost.middleB}, prePost.post].filter(s => !!s);
+      const ret = simpleConvertMecabReading(literal, rt);
+      console.log({ret})
       return ret;
     }
   }));
 
   return furigana;
+}
+
+/*
+(if kana is padded on either side, it's unambiguous, so kanji bookends are important)
+
+Consider the following literal/reading pair, where uppercase represents KANJI and lowercase kana:
+
+AxBzC = axbbzccc : this is unambiguous
+
+But:
+
+AxBzC =  axbxbzccc : ambiguous: which x should we cut at?
+AxBzC ?= a x bxb zccc or
+AxBzC ?= axb x b zccc
+
+I.e., ambiguity when kana run in base (kanji) text appears also in the true reading of an adjancent kanji run.
+
+Is this ambiguous:
+AxBzC = axbbzxccc --- NO.
+AxBzC = axxbbzccc --- YES
+
+SIMPLE resolution: split eagerly at the first possible case.
+Better resolution: use Kanjidic?
+*/
+function simpleConvertMecabReading(literal: string, reading: string) {
+  const ret: Furigana[] = [];
+  const prepost = prePostMatches(literal, reading);
+  if (prepost.pre) { ret.push(prepost.pre); }
+
+  literal = prepost.middleA;
+  reading = prepost.middleB;
+  const splits = splitKanaKanjiRuns(literal);
+  for (const {s, isKanji} of splits) {
+    if (isKanji) { continue; }
+
+    const litIdx = literal.indexOf(s);
+    const readIdx = reading.indexOf(s);
+    if (litIdx < 0 || readIdx < 0) { // bad error, return
+      return [{ruby: literal, rt: reading}];
+    }
+    ret.push({ruby: literal.slice(0, litIdx), rt: reading.slice(0, readIdx)})
+    ret.push(s);
+    literal = literal.slice(litIdx + s.length);
+    reading = reading.slice(readIdx + s.length);
+  }
+  if (splits[splits.length - 1].isKanji) { // last kanji split would have been skipped above
+    ret.push({ruby: literal, rt: reading});
+  }
+  if (prepost.post) { ret.push(prepost.post); }
+  return ret;
+}
+function splitKanaKanjiRuns(s: string) {
+  let current: {s: string, isKanji: boolean} = {s: s[0], isKanji: hasKanji(s[0])};
+  const ret: (typeof current)[] = [];
+  for (const [i, c] of s.slice(1).split('').entries()) {
+    const isKanji = hasKanji(c);
+    if (isKanji === current.isKanji) {
+      current.s = current.s + c;
+    } else {
+      ret.push(current);
+      current = {s: c, isKanji};
+    }
+  }
+  return ret.concat(current);
 }
 function prePostMatches(a: string, b: string) {
   let pre = '';
