@@ -2,6 +2,8 @@
 const spawn = require('child_process').spawn;
 import {partitionBy, flatten} from 'curtiz-utils';
 
+// https://gist.github.com/masayu-a/e3eee0637c07d4019ec9 "prepared by Irena Srdanovic, 17.1.2013, checked by Ogiso, Den
+// and Maekawa"
 const partOfSpeechKeys = [
   "代名詞",
   "pronoun",
@@ -125,6 +127,7 @@ const partOfSpeechKeys = [
   "new_unknown_words"
 ];
 
+// https://gist.github.com/masayu-a/3e11168f9330e2d83a68 "prepared by Irena Srdanovic, 18.1.2013 and 22.1.2013"
 const inflectionKeys = [
   "ク語法",     "ku_wording",
   "仮定形",     "conditional",
@@ -152,6 +155,7 @@ const inflectionKeys = [
   "*",          "uninflected"
 ];
 
+// https://gist.github.com/masayu-a/b3ce862336e47736e84f "prepared by Irena Srdanovic, 18.1.2013 and 22.1.2013"
 const inflectionTypeKeys = [
   "ユク",         "yuku",
   "ダ行",         "da_column",
