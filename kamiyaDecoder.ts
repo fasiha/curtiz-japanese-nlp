@@ -29,6 +29,21 @@ export function decodeKamiya1_12_vconj_masu_mashou(ms: Morpheme[]) {
   return ret;
 }
 
+export function decodeKamiya2_25_vdic_youni(ms: Morpheme[]) {
+  const ret: GrammarNote[] = [];
+  for (const [i, m] of ms.entries()) {
+    if (
+        m.partOfSpeech[0].startsWith('verb') &&
+        kamiya.conjugate(m.lemma, kamiya.Conjugation.Dictionary, m.partOfSpeech[0].includes('ichidan')) // verb
+        && ms[i + 1]?.lemma === '様' && ms[i + 1]?.partOfSpeech[0].startsWith('adjectival_noun')        // you
+        && ms[i + 2]?.literal === 'に' && ms[i + 2]?.partOfSpeech[0].startsWith('auxiliary_verb')       // ni
+    ) {
+      ret.push({idxs: [i, i + 1, i + 2], source: 'Kamiya_2001_HJV', id: '2.25'})
+    }
+  }
+  return ret;
+}
+
 export function decodeKamiya7_25_vte_oku(ms: Morpheme[]) {
   const ret: GrammarNote[] = [];
   for (const [i, m] of ms.entries()) {
@@ -64,8 +79,13 @@ if (require.main === module) {
     const tests = [
       {sentence: 'お父さんに話してしまいました', expected: [{id: '7.26'}, {id: '1.1'}]},
       {sentence: 'お箸を買っておきましょう', expected: [{id: '1.2'}, {id: '7.25'}]},
+      {sentence: '線は流れるように', expected: [{id: '2.25'}]},
+
     ];
-    const functions = [decodeKamiya1_12_vconj_masu_mashou, decodeKamiya7_25_vte_oku, decodeKamiya7_26_vte_shimau];
+    const functions = [
+      decodeKamiya1_12_vconj_masu_mashou, decodeKamiya2_25_vdic_youni, decodeKamiya7_25_vte_oku,
+      decodeKamiya7_26_vte_shimau
+    ];
     for (const {sentence, expected} of tests) {
       const morphemes = await parse(sentence);
       const actuals = functions.map(f => f(morphemes)).filter(v => v.length > 0);
