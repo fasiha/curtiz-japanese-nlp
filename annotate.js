@@ -309,7 +309,11 @@ const CHOUONPU = 'ー'; // https://en.wikipedia.org/wiki/Ch%C5%8Donpu
  */
 function morphemeToStringLiteral(m, jmdictFurigana) {
     if (!curtiz_utils_1.hasKanji(m.literal)) {
-        return [m.literal];
+        if (m.literal === m.lemma) {
+            return [m.literal];
+        }
+        // sometimes, e.g., `テンション、ひくっ`, literal=ひくっ but lemma=ひく and we want to look up the lemma
+        return [m.literal, m.lemma];
     }
     // so literal has kanji
     if (!m.pronunciation.includes(CHOUONPU)) {

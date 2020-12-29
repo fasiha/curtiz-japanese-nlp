@@ -345,7 +345,11 @@ const CHOUONPU = 'ー'; // https://en.wikipedia.org/wiki/Ch%C5%8Donpu
  */
 function morphemeToStringLiteral(m: Pick<Morpheme, 'literal'|'lemma'|'pronunciation'|'lemmaReading'>,
                                  jmdictFurigana?: JmdictFurigana): string[] {
-  if (!hasKanji(m.literal)) { return [m.literal]; }
+  if (!hasKanji(m.literal)) {
+    if (m.literal === m.lemma) { return [m.literal]; }
+    // sometimes, e.g., `テンション、ひくっ`, literal=ひくっ but lemma=ひく and we want to look up the lemma
+    return [m.literal, m.lemma];
+  }
   // so literal has kanji
   if (!m.pronunciation.includes(CHOUONPU)) { return [kata2hira(m.pronunciation)]; }
   // so literal has kanji and the pronunciation has a chouonpu
