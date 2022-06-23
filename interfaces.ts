@@ -20,6 +20,7 @@ export interface ScoreHit {
   score: number;
   search: string;
   summary?: string;
+  word?: Word;
 }
 export interface ScoreHits {
   startIdx: number;

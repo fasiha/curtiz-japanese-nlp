@@ -39,7 +39,7 @@ app.post('/api/v1/sentence', async (req, res) => {
   }
   const {sentence, overrides} = body.right;
   // const overrides = body.right
-  res.json(await handleSentence(sentence, overrides || {}));
+  res.json(await handleSentence(sentence, overrides || {}, !!req.query.includeWord));
 });
 
 app.post('/api/v1/sentences', async (req, res) => {
@@ -50,11 +50,14 @@ app.post('/api/v1/sentences', async (req, res) => {
   }
   const {sentences, overrides} = body.right;
   const resBody: v1ResSentence[] = [];
-  for (const sentence of sentences) { resBody.push(await handleSentence(sentence, overrides || {})); }
+  for (const sentence of sentences) {
+    resBody.push(await handleSentence(sentence, overrides || {}, !!req.query.includeWord));
+  }
   res.json(resBody);
 });
 
-async function handleSentence(sentence: string, overrides: Record<string, Furigana[]>): Promise<v1ResSentence> {
+async function handleSentence(sentence: string, overrides: Record<string, Furigana[]>,
+                              includeWord = false): Promise<v1ResSentence> {
   if (!hasKanji(sentence) && !hasKana(sentence)) {
     const resBody: v1ResSentence = sentence;
     return resBody;
@@ -69,6 +72,7 @@ async function handleSentence(sentence: string, overrides: Record<string, Furiga
       const words = await scoreHitsToWords(dictHits[i].results[j].results);
       for (let k = 0; k < words.length; k++) {
         dictHits[i].results[j].results[k].summary = displayWordLight(words[k], tags);
+        if (includeWord) { dictHits[i].results[j].results[k].word = words[k]; }
       }
     }
   }
