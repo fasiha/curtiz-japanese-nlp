@@ -6,6 +6,7 @@ import express from 'express';
 import {isRight} from 'fp-ts/lib/Either';
 
 import {
+  identifyFillInBlanks,
   displayWordLight,
   enumerateDictionaryHits,
   Furigana,
@@ -15,8 +16,16 @@ import {
   morphemesToFurigana,
   scoreHitsToWords
 } from './annotate';
-import {ScoreHits, v1ReqSentence, v1ReqSentences, v1ResSentence, SearchMapped} from './interfaces';
-import {invokeMecab, maybeMorphemesToMorphemes, parseMecab} from './mecabUnidic';
+import {
+  ScoreHits,
+  v1ReqSentence,
+  v1ReqSentences,
+  v1ResSentence,
+  SearchMapped,
+  FillInTheBlanks,
+  FillInTheBlanksExport
+} from './interfaces';
+import {invokeMecab, maybeMorphemesToMorphemes, parseMecab, Morpheme} from './mecabUnidic';
 import {setupSimple as kanjidicSetup, SimpleCharacter} from './kanjidic';
 
 const tagsPromise = jmdictPromise.then(({db}) => db)
@@ -39,7 +48,7 @@ app.post('/api/v1/sentence', async (req, res) => {
   }
   const {sentence, overrides} = body.right;
   // const overrides = body.right
-  res.json(await handleSentence(sentence, overrides || {}, !!req.query.includeWord));
+  res.json(await handleSentence(sentence, overrides || {}, !!req.query.includeWord, !!req.query.includeClozes));
 });
 
 app.post('/api/v1/sentences', async (req, res) => {
@@ -51,19 +60,27 @@ app.post('/api/v1/sentences', async (req, res) => {
   const {sentences, overrides} = body.right;
   const resBody: v1ResSentence[] = [];
   for (const sentence of sentences) {
-    resBody.push(await handleSentence(sentence, overrides || {}, !!req.query.includeWord));
+    resBody.push(await handleSentence(sentence, overrides || {}, !!req.query.includeWord, !!req.query.includeClozes));
   }
   res.json(resBody);
 });
 
-async function handleSentence(sentence: string, overrides: Record<string, Furigana[]>,
-                              includeWord = false): Promise<v1ResSentence> {
+async function handleSentence(sentence: string, overrides: Record<string, Furigana[]>, includeWord: boolean,
+                              extractParticlesConj: boolean): Promise<v1ResSentence> {
   if (!hasKanji(sentence) && !hasKana(sentence)) {
     const resBody: v1ResSentence = sentence;
     return resBody;
   }
 
-  let morphemes = maybeMorphemesToMorphemes(parseMecab(sentence, await invokeMecab(sentence))[0].filter(o => !!o));
+  let morphemes: Morpheme[];
+  let bunsetsus: Morpheme[][] = [];
+  if (!extractParticlesConj) {
+    morphemes = maybeMorphemesToMorphemes(parseMecab(sentence, await invokeMecab(sentence))[0].filter(o => !!o));
+  } else {
+    const res = await mecabJdepp(sentence)
+    morphemes = res.morphemes;
+    bunsetsus = res.bunsetsus;
+  }
   const furigana = await morphemesToFurigana(sentence, morphemes, overrides);
   const tags = await tagsPromise;
   const dictHits = await enumerateDictionaryHits(morphemes, false, 10);
@@ -88,7 +105,15 @@ async function handleSentence(sentence: string, overrides: Record<string, Furiga
                                                       .children
                                   }]));
 
-  const resBody: v1ResSentence = {furigana, hits: dictHits, kanjidic: kanjidicHits};
+  let clozes: undefined|FillInTheBlanksExport = undefined;
+  if (extractParticlesConj) {
+    const {conjugatedPhrases: c, particles: p} = await identifyFillInBlanks(bunsetsus);
+    function convert<T>(map: Map<string, T>): Record<string, T>{return Object.fromEntries(map.entries())} clozes = {
+      conjugatedPhrases: convert(c),
+      particles: convert(p)
+    }
+  }
+  const resBody: v1ResSentence = {furigana, hits: dictHits, kanjidic: kanjidicHits, clozes};
   return resBody;
 }
 

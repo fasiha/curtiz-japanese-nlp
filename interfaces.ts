@@ -38,6 +38,10 @@ export interface FillInTheBlanks {
   particles: Map<string, ContextCloze>;
   conjugatedPhrases: Map<string, ConjugatedPhrase>;
 }
+export interface FillInTheBlanksExport {
+  particles: Record<string, ContextCloze>;
+  conjugatedPhrases: Record<string, ConjugatedPhrase>;
+}
 export interface ContextCloze {
   left: string;
   cloze: string;
@@ -58,7 +62,9 @@ export interface v1ResSentenceAnalyzed {
   furigana: Furigana[][];
   hits: ScoreHits[];
   kanjidic: Record<string, SimpleCharacter&{dependencies: SearchMapped<SimpleCharacter|null>[]}>;
+  clozes?: FillInTheBlanksExport;
 }
+
 export type SearchMapped<T> = {
   node: string,
   nodeMapped: T,

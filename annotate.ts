@@ -281,7 +281,7 @@ function generateContextClozed(left: string, cloze: string, right: string): Cont
   return {left: leftContext, cloze, right: rightContext};
 }
 const bunsetsuToString = (morphemes: Morpheme[]) => morphemes.map(m => m.literal).join('');
-async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<FillInTheBlanks> {
+export async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<FillInTheBlanks> {
   // Find clozes: particles and conjugated verb/adjective phrases
   const conjugatedPhrases: Map<string, ConjugatedPhrase> = new Map();
   const particles: Map<string, ContextCloze> = new Map();
@@ -306,8 +306,9 @@ async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<FillInTheB
               const entries = jf.textToEntry.get(o.lemma) || [];
               const lemmaReading = kata2hira(o.lemmaReading);
               const entry = entries.find(e => e.reading === lemmaReading);
-              return entry ? entry.furigana
-                           : o.lemma === lemmaReading ? [lemmaReading] : [{ruby: o.lemma, rt: lemmaReading}];
+              return entry                      ? entry.furigana
+                     : o.lemma === lemmaReading ? [lemmaReading]
+                                                : [{ruby: o.lemma, rt: lemmaReading}];
             })
           });
         }

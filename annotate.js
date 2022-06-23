@@ -273,7 +273,8 @@ function identifyFillInBlanks(bunsetsus) {
                                 const lemmaReading = curtiz_utils_1.kata2hira(o.lemmaReading);
                                 const entry = entries.find(e => e.reading === lemmaReading);
                                 return entry ? entry.furigana
-                                    : o.lemma === lemmaReading ? [lemmaReading] : [{ ruby: o.lemma, rt: lemmaReading }];
+                                    : o.lemma === lemmaReading ? [lemmaReading]
+                                        : [{ ruby: o.lemma, rt: lemmaReading }];
                             })
                         });
                     }
@@ -293,6 +294,7 @@ function identifyFillInBlanks(bunsetsus) {
         return { particles, conjugatedPhrases };
     });
 }
+exports.identifyFillInBlanks = identifyFillInBlanks;
 function morphemeToSearchLemma(m) {
     var _a, _b;
     const pos0 = m.partOfSpeech[0];
