@@ -4,7 +4,6 @@ import {readFileSync} from 'fs';
 import {hasKana, hasKanji} from 'curtiz-utils';
 import express from 'express';
 import {isRight} from 'fp-ts/lib/Either';
-import * as t from 'io-ts';
 
 import {
   displayWordLight,
@@ -16,20 +15,10 @@ import {
   morphemesToFurigana,
   scoreHitsToWords
 } from './annotate';
-import {ScoreHits} from './interfaces';
+import {ScoreHits, v1ReqSentence, v1ReqSentences, v1ResSentence, SearchMapped} from './interfaces';
 import {invokeMecab, maybeMorphemesToMorphemes, parseMecab} from './mecabUnidic';
 import {setupSimple as kanjidicSetup, SimpleCharacter} from './kanjidic';
 
-const TFurigana = t.array(t.union([t.string, t.type({ruby: t.string, rt: t.string})]));
-const PartialOverrides = t.partial({overrides: t.record(t.string, TFurigana)});
-const v1ReqSentence = t.intersection([t.type({sentence: t.string}), PartialOverrides]);
-const v1ReqSentences = t.intersection([t.type({sentences: t.array(t.string)}), PartialOverrides]);
-type v1ResSentence = string|v1ResSentenceAnalyzed;
-interface v1ResSentenceAnalyzed {
-  furigana: Furigana[][];
-  hits: ScoreHits[];
-  kanjidic: Record<string, SimpleCharacter&{dependencies: SearchMapped<SimpleCharacter|null>[]}>;
-}
 const tagsPromise = jmdictPromise.then(({db}) => db)
                         .then(db => getField(db, 'tags'))
                         .then(raw => JSON.parse(raw) as Record<string, string>);
@@ -45,7 +34,7 @@ app.use(require('body-parser').json());
 app.post('/api/v1/sentence', async (req, res) => {
   const body = v1ReqSentence.decode(req.body);
   if (!isRight(body)) {
-    res.status(400).json('bad payload');
+    res.status(400).json('bad payload' + JSON.stringify(body.left));
     return;
   }
   const {sentence, overrides} = body.right;
@@ -112,11 +101,6 @@ export function treeSearch(tree: Tree, node: string, seen: Set<string> = new Set
   return { node, children: children.map(node => treeSearch(tree, node, seen)) }
 }
 
-type SearchMapped<T> = {
-  node: string,
-  nodeMapped: T,
-  children: SearchMapped<T>[],
-};
 export function searchMap<T>(search: Search, f: (s: string) => T): SearchMapped<T> {
   return {node: search.node, nodeMapped: f(search.node), children: search.children.map(node => searchMap(node, f))};
 }
