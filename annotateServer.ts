@@ -113,7 +113,8 @@ async function handleSentence(sentence: string, overrides: Record<string, Furiga
       particles: convert(p)
     }
   }
-  const resBody: v1ResSentence = {furigana, hits: dictHits, kanjidic: kanjidicHits, clozes};
+  const resBody:
+      v1ResSentence = {furigana, hits: dictHits, kanjidic: kanjidicHits, clozes, tags: includeWord ? tags : undefined};
   return resBody;
 }
 

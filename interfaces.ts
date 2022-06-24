@@ -63,6 +63,7 @@ export interface v1ResSentenceAnalyzed {
   hits: ScoreHits[];
   kanjidic: Record<string, SimpleCharacter&{dependencies: SearchMapped<SimpleCharacter|null>[]}>;
   clozes?: FillInTheBlanksExport;
+  tags?: Record<string, string>;
 }
 
 export type SearchMapped<T> = {
