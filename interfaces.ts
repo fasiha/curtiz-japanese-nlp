@@ -3,6 +3,7 @@ import {Furigana} from "jmdict-furigana-node";
 import {Word} from "jmdict-simplified-node/interfaces";
 
 import {SimpleCharacter} from './kanjidic';
+import {Morpheme} from './mecabUnidic';
 
 export {Furigana, Ruby} from "jmdict-furigana-node";
 export {
@@ -14,6 +15,7 @@ export {
   Word,
   Xref,
 } from "jmdict-simplified-node/interfaces";
+export {Morpheme} from './mecabUnidic';
 
 export interface ScoreHit {
   wordId: Word['id'];
@@ -33,6 +35,7 @@ export interface ScoreHits {
 export interface ConjugatedPhrase {
   cloze: ContextCloze;
   lemmas: Furigana[][];
+  morphemes: Morpheme[],
 }
 export interface FillInTheBlanks {
   particles: Map<string, ContextCloze>;

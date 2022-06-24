@@ -267,6 +267,7 @@ function identifyFillInBlanks(bunsetsus) {
                     if (!conjugatedPhrases.has(cloze)) {
                         const jf = yield exports.jmdictFuriganaPromise;
                         conjugatedPhrases.set(cloze, {
+                            morphemes: goodBunsetsu,
                             cloze: generateContextClozed(left, cloze, right),
                             lemmas: goodBunsetsu.map(o => {
                                 const entries = jf.textToEntry.get(o.lemma) || [];

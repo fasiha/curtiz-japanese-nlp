@@ -301,6 +301,7 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<Fil
         if (!conjugatedPhrases.has(cloze)) {
           const jf = await jmdictFuriganaPromise;
           conjugatedPhrases.set(cloze, {
+            morphemes: goodBunsetsu,
             cloze: generateContextClozed(left, cloze, right),
             lemmas: goodBunsetsu.map(o => {
               const entries = jf.textToEntry.get(o.lemma) || [];
