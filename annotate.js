@@ -280,6 +280,9 @@ function identifyFillInBlanks(bunsetsus) {
                         });
                     }
                 }
+                else if (goodBunsetsu.length === 1) {
+                    // there are cases where a single morpheme can be conjugated, e.g., 早い → 早く
+                }
             }
             const particlePredicate = (p) => p.partOfSpeech[0].startsWith('particle') && p.partOfSpeech.length > 1 &&
                 !p.partOfSpeech[1].startsWith('phrase_final');
@@ -288,7 +291,7 @@ function identifyFillInBlanks(bunsetsus) {
                     const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(bunsetsu.slice(0, pidx));
                     const right = bunsetsuToString(bunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
                     const cloze = generateContextClozed(left, particle.literal, right);
-                    particles.set(cloze.left + cloze.cloze + cloze.right, cloze);
+                    particles.set(cloze.left + cloze.cloze + cloze.right, { cloze, morphemes: [particle] });
                 }
             }
         }
@@ -686,7 +689,7 @@ function linesToCurtizMarkdown(lines) {
             {
                 if (results.particlesConjphrases.particles.size) {
                     ret.push('  - Particles');
-                    for (const [_, cloze] of results.particlesConjphrases.particles) {
+                    for (const [_, { cloze }] of results.particlesConjphrases.particles) {
                         ret.push(`    - ${cloze.left}${cloze.left || cloze.right ? '[' + cloze.cloze + ']' : cloze.cloze}${cloze.right}`);
                     }
                 }

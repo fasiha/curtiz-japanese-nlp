@@ -37,14 +37,25 @@ export interface ConjugatedPhrase {
   lemmas: Furigana[][];
   morphemes: Morpheme[],
 }
+export interface Particle {
+  cloze: ContextCloze;
+  morphemes: Morpheme[];
+}
 export interface FillInTheBlanks {
-  particles: Map<string, ContextCloze>;
+  particles: Map<string, Particle>;
   conjugatedPhrases: Map<string, ConjugatedPhrase>;
 }
-export interface FillInTheBlanksExport {
+type MapValuesToRecordValues<M> = {
+  [k in keyof M]: Record<string, M[k] extends Map<string, infer X>? X : never>
+};
+export type FillInTheBlanksExport = MapValuesToRecordValues<FillInTheBlanks>;
+/* the above is equivalent to:
+interface FillInTheBlanksExport_equiv {
   particles: Record<string, ContextCloze>;
   conjugatedPhrases: Record<string, ConjugatedPhrase>;
 }
+Needed because Maps don't JSON-serialize and and I don't want to replace Map with Record in library code
+*/
 export interface ContextCloze {
   left: string;
   cloze: string;

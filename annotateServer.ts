@@ -108,10 +108,8 @@ async function handleSentence(sentence: string, overrides: Record<string, Furiga
   let clozes: undefined|FillInTheBlanksExport = undefined;
   if (extractParticlesConj) {
     const {conjugatedPhrases: c, particles: p} = await identifyFillInBlanks(bunsetsus);
-    function convert<T>(map: Map<string, T>): Record<string, T>{return Object.fromEntries(map.entries())} clozes = {
-      conjugatedPhrases: convert(c),
-      particles: convert(p)
-    }
+    function convert<T>(map: Map<string, T>): Record<string, T> { return Object.fromEntries(map.entries()); }
+    clozes = { conjugatedPhrases: convert(c), particles: convert(p) }
   }
   const resBody:
       v1ResSentence = {furigana, hits: dictHits, kanjidic: kanjidicHits, clozes, tags: includeWord ? tags : undefined};

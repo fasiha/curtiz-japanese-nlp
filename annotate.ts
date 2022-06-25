@@ -23,7 +23,15 @@ import {
 } from 'jmdict-simplified-node';
 import mkdirp from 'mkdirp';
 
-import {AnalysisResult, ConjugatedPhrase, ContextCloze, FillInTheBlanks, ScoreHit, ScoreHits} from './interfaces';
+import {
+  AnalysisResult,
+  ConjugatedPhrase,
+  ContextCloze,
+  FillInTheBlanks,
+  Particle,
+  ScoreHit,
+  ScoreHits
+} from './interfaces';
 import {addJdepp} from './jdepp';
 import {
   goodMorphemePredicate,
@@ -284,7 +292,7 @@ const bunsetsuToString = (morphemes: Morpheme[]) => morphemes.map(m => m.literal
 export async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<FillInTheBlanks> {
   // Find clozes: particles and conjugated verb/adjective phrases
   const conjugatedPhrases: Map<string, ConjugatedPhrase> = new Map();
-  const particles: Map<string, ContextCloze> = new Map();
+  const particles: Map<string, Particle> = new Map();
   for (const [bidx, bunsetsu] of bunsetsus.entries()) {
     const first = bunsetsu[0];
     if (!first) { continue; }
@@ -313,6 +321,8 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<Fil
             })
           });
         }
+      } else if (goodBunsetsu.length === 1) {
+        // there are cases where a single morpheme can be conjugated, e.g., 早い → 早く
       }
     }
     const particlePredicate = (p: Morpheme) => p.partOfSpeech[0].startsWith('particle') && p.partOfSpeech.length > 1 &&
@@ -324,7 +334,7 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<Fil
         const right =
             bunsetsuToString(bunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
         const cloze = generateContextClozed(left, particle.literal, right);
-        particles.set(cloze.left + cloze.cloze + cloze.right, cloze);
+        particles.set(cloze.left + cloze.cloze + cloze.right, {cloze, morphemes: [particle]});
       }
     }
   }
@@ -699,7 +709,7 @@ export async function linesToCurtizMarkdown(lines: string[]) {
     {
       if (results.particlesConjphrases.particles.size) {
         ret.push('  - Particles');
-        for (const [_, cloze] of results.particlesConjphrases.particles) {
+        for (const [_, {cloze}] of results.particlesConjphrases.particles) {
           ret.push(
               `    - ${cloze.left}${cloze.left || cloze.right ? '[' + cloze.cloze + ']' : cloze.cloze}${cloze.right}`);
         }
