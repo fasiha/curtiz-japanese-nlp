@@ -302,7 +302,7 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<Fil
         (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject') || posLast === 'verbal_suru')) {
       const ignoreRight = filterRight(bunsetsu, m => !goodMorphemePredicate(m));
       const goodBunsetsu = ignoreRight.length === 0 ? bunsetsu : bunsetsu.slice(0, -ignoreRight.length);
-      if (goodBunsetsu.length > 1) {
+      if (goodBunsetsu.length > 0) {
         const cloze = bunsetsuToString(goodBunsetsu);
         const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('');
         const right = bunsetsuToString(ignoreRight) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
@@ -321,8 +321,6 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<Fil
             })
           });
         }
-      } else if (goodBunsetsu.length === 1) {
-        // there are cases where a single morpheme can be conjugated, e.g., 早い → 早く
       }
     }
     const particlePredicate = (p: Morpheme) => p.partOfSpeech[0].startsWith('particle') && p.partOfSpeech.length > 1 &&
