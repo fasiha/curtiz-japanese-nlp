@@ -21,6 +21,7 @@ import {
   Word,
   Xref,
 } from 'jmdict-simplified-node';
+import {adjDeconjugate, verbDeconjugate} from 'kamiya-codec';
 import mkdirp from 'mkdirp';
 
 import {
@@ -313,7 +314,7 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
     }
     /*
     If a bunsetsu has >1 morphemes, check if it's a verb or an adjective (i or na).
-    If it's just one, make sure it's an adjective that's not a conclusive
+    If it's just one, make sure it's an adjective that's not a conclusive (catches 朝早く)
     */
     if ((goodBunsetsu.length === 1 && pos0.startsWith('adjectiv') &&
          (first.inflection?.[0] ? !first.inflection[0].endsWith('conclusive') : true)) ||
@@ -327,7 +328,15 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
       const endIdx = startMorphemeIdx + bunsetsu.length;
       const key = `${startIdx}-${endIdx}`
       const jf = await jmdictFuriganaPromise;
+
+      const verbNotAdj = pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0Last === 'verbal_suru';
+      const ichidan = first.inflectionType?.[0].startsWith('ichidan');
+      const iAdj = pos0.endsWith('adjective_i');
+      const deconj = verbNotAdj ? verbDeconjugate(cloze, goodBunsetsu[0].lemma, ichidan)
+                                : adjDeconjugate(cloze, goodBunsetsu[0].lemma, iAdj);
+
       conjugatedPhrases.set(key, {
+        deconj,
         startIdx,
         endIdx,
         morphemes: goodBunsetsu,
@@ -843,13 +852,20 @@ cat inputfile | annotate MODE
 
   (async () => {
     {
-      await analyzeSentence('ある日の朝早く、ジリリリンとおしりたんてい事務所の電話が鳴りました。');
+      let x = await analyzeSentence('ある日の朝早く、ジリリリンとおしりたんてい事務所の電話が鳴りました。');
+      console.dir(Array.from(x.particlesConjphrases.conjugatedPhrases.values(), o => o.deconj), {depth: null})
       console.log('\n===\n');
-      await analyzeSentence('鳥の鳴き声が森の静かさを破った');
+      x = await analyzeSentence('鳥の鳴き声が森の静かさを破った');
+      console.dir(Array.from(x.particlesConjphrases.conjugatedPhrases.values(), o => o.deconj), {depth: null})
       console.log('\n===\n');
-      await analyzeSentence('早い');
+      x = await analyzeSentence('早い');
+      console.dir(Array.from(x.particlesConjphrases.conjugatedPhrases.values(), o => o.deconj), {depth: null})
       console.log('\n===\n');
-      await analyzeSentence('昨日は寒かった');
+      x = await analyzeSentence('昨日は寒かった');
+      console.dir(Array.from(x.particlesConjphrases.conjugatedPhrases.values(), o => o.deconj), {depth: null})
+      console.log('\n===\n');
+      x = await analyzeSentence('よかった');
+      console.dir(Array.from(x.particlesConjphrases.conjugatedPhrases.values(), o => o.deconj), {depth: null})
       if (Math.random() > -1) { return };
     }
 

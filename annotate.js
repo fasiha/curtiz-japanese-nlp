@@ -17,6 +17,7 @@ const curtiz_utils_1 = require("curtiz-utils");
 const fs_1 = require("fs");
 const jmdict_furigana_node_1 = require("jmdict-furigana-node");
 const jmdict_simplified_node_1 = require("jmdict-simplified-node");
+const kamiya_codec_1 = require("kamiya-codec");
 const mkdirp_1 = __importDefault(require("mkdirp"));
 const jdepp_1 = require("./jdepp");
 const mecabUnidic_1 = require("./mecabUnidic");
@@ -248,7 +249,7 @@ function betterMorphemePredicate(m) {
     return !(m.partOfSpeech[0] === 'supplementary_symbol') && !(m.partOfSpeech[0] === 'particle');
 }
 function identifyFillInBlanks(bunsetsus, verbose = false) {
-    var _a;
+    var _a, _b;
     return __awaiter(this, void 0, void 0, function* () {
         // Find clozes: particles and conjugated verb/adjective phrases
         const conjugatedPhrases = new Map();
@@ -270,7 +271,7 @@ function identifyFillInBlanks(bunsetsus, verbose = false) {
             }
             /*
             If a bunsetsu has >1 morphemes, check if it's a verb or an adjective (i or na).
-            If it's just one, make sure it's an adjective that's not a conclusive
+            If it's just one, make sure it's an adjective that's not a conclusive (catches 朝早く)
             */
             if ((goodBunsetsu.length === 1 && pos0.startsWith('adjectiv') &&
                 (((_a = first.inflection) === null || _a === void 0 ? void 0 : _a[0]) ? !first.inflection[0].endsWith('conclusive') : true)) ||
@@ -286,7 +287,13 @@ function identifyFillInBlanks(bunsetsus, verbose = false) {
                 const endIdx = startMorphemeIdx + bunsetsu.length;
                 const key = `${startIdx}-${endIdx}`;
                 const jf = yield exports.jmdictFuriganaPromise;
+                const verbNotAdj = pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0Last === 'verbal_suru';
+                const ichidan = (_b = first.inflectionType) === null || _b === void 0 ? void 0 : _b[0].startsWith('ichidan');
+                const iAdj = pos0.endsWith('adjective_i');
+                const deconj = verbNotAdj ? kamiya_codec_1.verbDeconjugate(cloze, goodBunsetsu[0].lemma, ichidan)
+                    : kamiya_codec_1.adjDeconjugate(cloze, goodBunsetsu[0].lemma, iAdj);
                 conjugatedPhrases.set(key, {
+                    deconj,
                     startIdx,
                     endIdx,
                     morphemes: goodBunsetsu,
@@ -819,13 +826,20 @@ cat inputfile | annotate MODE
     })(Mode || (Mode = {}));
     (() => __awaiter(void 0, void 0, void 0, function* () {
         {
-            yield analyzeSentence('ある日の朝早く、ジリリリンとおしりたんてい事務所の電話が鳴りました。');
+            let x = yield analyzeSentence('ある日の朝早く、ジリリリンとおしりたんてい事務所の電話が鳴りました。');
+            console.dir(Array.from(x.particlesConjphrases.conjugatedPhrases.values(), o => o.deconj), { depth: null });
             console.log('\n===\n');
-            yield analyzeSentence('鳥の鳴き声が森の静かさを破った');
+            x = yield analyzeSentence('鳥の鳴き声が森の静かさを破った');
+            console.dir(Array.from(x.particlesConjphrases.conjugatedPhrases.values(), o => o.deconj), { depth: null });
             console.log('\n===\n');
-            yield analyzeSentence('早い');
+            x = yield analyzeSentence('早い');
+            console.dir(Array.from(x.particlesConjphrases.conjugatedPhrases.values(), o => o.deconj), { depth: null });
             console.log('\n===\n');
-            yield analyzeSentence('昨日は寒かった');
+            x = yield analyzeSentence('昨日は寒かった');
+            console.dir(Array.from(x.particlesConjphrases.conjugatedPhrases.values(), o => o.deconj), { depth: null });
+            console.log('\n===\n');
+            x = yield analyzeSentence('よかった');
+            console.dir(Array.from(x.particlesConjphrases.conjugatedPhrases.values(), o => o.deconj), { depth: null });
             if (Math.random() > -1) {
                 return;
             }
