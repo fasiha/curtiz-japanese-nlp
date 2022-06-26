@@ -244,42 +244,62 @@ function generateContextClozed(left, cloze, right) {
     return { left: leftContext, cloze, right: rightContext };
 }
 const bunsetsuToString = (morphemes) => morphemes.map(m => m.literal).join('');
-function identifyFillInBlanks(bunsetsus) {
+function betterMorphemePredicate(m) {
+    return !(m.partOfSpeech[0] === 'supplementary_symbol') && !(m.partOfSpeech[0] === 'particle');
+}
+function identifyFillInBlanks(bunsetsus, verbose = false) {
+    var _a;
     return __awaiter(this, void 0, void 0, function* () {
         // Find clozes: particles and conjugated verb/adjective phrases
         const conjugatedPhrases = new Map();
         const particles = new Map();
         for (const [bidx, bunsetsu] of bunsetsus.entries()) {
+            const startMorphemeIdx = bunsetsus.slice(0, -1).map(o => o.length).reduce((p, c) => p + c, 0);
             const first = bunsetsu[0];
             if (!first) {
                 continue;
             }
             const pos0 = first.partOfSpeech[0];
-            const posLast = first.partOfSpeech[first.partOfSpeech.length - 1];
-            if (bunsetsu.length > 1 &&
-                (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject') || posLast === 'verbal_suru')) {
-                const ignoreRight = curtiz_utils_1.filterRight(bunsetsu, m => !mecabUnidic_1.goodMorphemePredicate(m));
-                const goodBunsetsu = ignoreRight.length === 0 ? bunsetsu : bunsetsu.slice(0, -ignoreRight.length);
-                if (goodBunsetsu.length > 0) {
-                    const cloze = bunsetsuToString(goodBunsetsu);
-                    const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('');
-                    const right = bunsetsuToString(ignoreRight) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
-                    if (!conjugatedPhrases.has(cloze)) {
-                        const jf = yield exports.jmdictFuriganaPromise;
-                        conjugatedPhrases.set(cloze, {
-                            morphemes: goodBunsetsu,
-                            cloze: generateContextClozed(left, cloze, right),
-                            lemmas: goodBunsetsu.map(o => {
-                                const entries = jf.textToEntry.get(o.lemma) || [];
-                                const lemmaReading = curtiz_utils_1.kata2hira(o.lemmaReading);
-                                const entry = entries.find(e => e.reading === lemmaReading);
-                                return entry ? entry.furigana
-                                    : o.lemma === lemmaReading ? [lemmaReading]
-                                        : [{ ruby: o.lemma, rt: lemmaReading }];
-                            })
-                        });
-                    }
+            const pos0Last = first.partOfSpeech[first.partOfSpeech.length - 1];
+            const ignoreRight = curtiz_utils_1.filterRight(bunsetsu, m => !betterMorphemePredicate(m));
+            const goodBunsetsu = ignoreRight.length === 0 ? bunsetsu : bunsetsu.slice(0, -ignoreRight.length);
+            if (verbose) {
+                const pr = (m) => `${m.literal} pos ${m.partOfSpeech.join('/')} | ${(m.inflectionType || []).join('/')} _ ${(m.inflection || []).join('/')}`;
+                console.log('-- ' + goodBunsetsu.length +
+                    bunsetsu.map((o, i) => (i >= goodBunsetsu.length ? `X(${o.literal})` : pr(o))).join('\n   '));
+            }
+            /*
+            If a bunsetsu has >1 morphemes, check if it's a verb or an adjective (i or na).
+            If it's just one, make sure it's an adjective that's not a conclusive
+            */
+            if ((goodBunsetsu.length === 1 && pos0.startsWith('adjectiv') &&
+                (((_a = first.inflection) === null || _a === void 0 ? void 0 : _a[0]) ? !first.inflection[0].endsWith('conclusive') : true)) ||
+                (goodBunsetsu.length > 1 && (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject') ||
+                    pos0Last === 'verbal_suru'))) {
+                if (verbose) {
+                    console.log('^^ included');
                 }
+                const cloze = bunsetsuToString(goodBunsetsu);
+                const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('');
+                const right = bunsetsuToString(ignoreRight) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
+                const startIdx = startMorphemeIdx;
+                const endIdx = startMorphemeIdx + bunsetsu.length;
+                const key = `${startIdx}-${endIdx}`;
+                const jf = yield exports.jmdictFuriganaPromise;
+                conjugatedPhrases.set(key, {
+                    startIdx,
+                    endIdx,
+                    morphemes: goodBunsetsu,
+                    cloze: generateContextClozed(left, cloze, right),
+                    lemmas: goodBunsetsu.map(o => {
+                        const entries = jf.textToEntry.get(o.lemma) || [];
+                        const lemmaReading = curtiz_utils_1.kata2hira(o.lemmaReading);
+                        const entry = entries.find(e => e.reading === lemmaReading);
+                        return entry ? entry.furigana
+                            : o.lemma === lemmaReading ? [lemmaReading]
+                                : [{ ruby: o.lemma, rt: lemmaReading }];
+                    })
+                });
             }
             const particlePredicate = (p) => p.partOfSpeech[0].startsWith('particle') && p.partOfSpeech.length > 1 &&
                 !p.partOfSpeech[1].startsWith('phrase_final');
@@ -798,6 +818,19 @@ cat inputfile | annotate MODE
         Mode["furiganaDict"] = "furigana-dict";
     })(Mode || (Mode = {}));
     (() => __awaiter(void 0, void 0, void 0, function* () {
+        {
+            yield analyzeSentence('ある日の朝早く、ジリリリンとおしりたんてい事務所の電話が鳴りました。');
+            console.log('\n===\n');
+            yield analyzeSentence('鳥の鳴き声が森の静かさを破った');
+            console.log('\n===\n');
+            yield analyzeSentence('早い');
+            console.log('\n===\n');
+            yield analyzeSentence('昨日は寒かった');
+            if (Math.random() > -1) {
+                return;
+            }
+            ;
+        }
         let lines = `- @ 今日は良い天気だ。
 
 - @ たのしいですか。

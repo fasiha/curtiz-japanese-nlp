@@ -33,6 +33,8 @@ export interface ScoreHits {
   }[];
 }
 export interface ConjugatedPhrase {
+  startIdx: number;
+  endIdx: number;
   cloze: ContextCloze;
   lemmas: Furigana[][];
   morphemes: Morpheme[],
