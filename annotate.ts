@@ -299,7 +299,9 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
   const conjugatedPhrases: Map<string, ConjugatedPhrase> = new Map();
   const particles: Map<string, Particle> = new Map();
   for (const [bidx, bunsetsu] of bunsetsus.entries()) {
-    const startMorphemeIdx = bunsetsus.slice(0, -1).map(o => o.length).reduce((p, c) => p + c, 0);
+    const startIdx = bunsetsus.slice(0, -1).map(o => o.length).reduce((p, c) => p + c, 0);
+    const endIdx = startIdx + bunsetsu.length;
+
     const first = bunsetsu[0];
     if (!first) { continue; }
     const pos0 = first.partOfSpeech[0];
@@ -324,8 +326,6 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
       const cloze = bunsetsuToString(goodBunsetsu);
       const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('');
       const right = bunsetsuToString(ignoreRight) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
-      const startIdx = startMorphemeIdx;
-      const endIdx = startMorphemeIdx + bunsetsu.length;
       const key = `${startIdx}-${endIdx}`
       const jf = await jmdictFuriganaPromise;
 
@@ -369,7 +369,7 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
         const right =
             bunsetsuToString(bunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
         const cloze = generateContextClozed(left, particle.literal, right);
-        particles.set(cloze.left + cloze.cloze + cloze.right, {cloze, morphemes: [particle]});
+        particles.set(cloze.left + cloze.cloze + cloze.right, {cloze, startIdx, endIdx, morphemes: [particle]});
       }
     }
   }

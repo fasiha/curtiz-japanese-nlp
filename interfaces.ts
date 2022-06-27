@@ -43,6 +43,8 @@ export interface ConjugatedPhrase {
 }
 export interface Particle {
   cloze: ContextCloze;
+  startIdx: number;
+  endIdx: number;
   morphemes: Morpheme[];
 }
 export interface FillInTheBlanks {
