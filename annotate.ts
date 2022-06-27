@@ -329,11 +329,27 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
       const key = `${startIdx}-${endIdx}`
       const jf = await jmdictFuriganaPromise;
 
+      const lemmas = goodBunsetsu.map(o => {
+        const entries = jf.textToEntry.get(o.lemma) || [];
+        const lemmaReading = kata2hira(o.lemmaReading);
+        const entry = entries.find(e => e.reading === lemmaReading);
+        return entry ? entry.furigana : o.lemma === lemmaReading ? [lemmaReading] : [{ruby: o.lemma, rt: lemmaReading}];
+      });
+
       const verbNotAdj = pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0Last === 'verbal_suru';
       const ichidan = first.inflectionType?.[0].startsWith('ichidan');
       const iAdj = pos0.endsWith('adjective_i');
-      const deconj = verbNotAdj ? verbDeconjugate(cloze, goodBunsetsu[0].lemma, ichidan)
-                                : adjDeconjugate(cloze, goodBunsetsu[0].lemma, iAdj);
+      let dictionaryForm = goodBunsetsu[0].lemma;
+      if (!hasKanji(cloze) && hasKanji(dictionaryForm)) {
+        // deconjugate won't find anything. Look at lemmas and try to kana-ify the dictionaryForm
+        for (const lemma of lemmas.flat()) {
+          if (typeof lemma === 'string') { continue; }
+          const {ruby, rt} = lemma;
+          dictionaryForm = dictionaryForm.replace(ruby, rt);
+        }
+      }
+      const deconj =
+          verbNotAdj ? verbDeconjugate(cloze, dictionaryForm, ichidan) : adjDeconjugate(cloze, dictionaryForm, iAdj);
 
       conjugatedPhrases.set(key, {
         deconj,
@@ -341,14 +357,7 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
         endIdx,
         morphemes: goodBunsetsu,
         cloze: generateContextClozed(left, cloze, right),
-        lemmas: goodBunsetsu.map(o => {
-          const entries = jf.textToEntry.get(o.lemma) || [];
-          const lemmaReading = kata2hira(o.lemmaReading);
-          const entry = entries.find(e => e.reading === lemmaReading);
-          return entry                      ? entry.furigana
-                 : o.lemma === lemmaReading ? [lemmaReading]
-                                            : [{ruby: o.lemma, rt: lemmaReading}];
-        })
+        lemmas
       });
     }
     const particlePredicate = (p: Morpheme) => p.partOfSpeech[0].startsWith('particle') && p.partOfSpeech.length > 1 &&
@@ -393,6 +402,9 @@ function morphemeToStringLiteral(m: Pick<Morpheme, 'literal'|'lemma'|'pronunciat
   // so literal has kanji and the pronunciation has a chouonpu
   if (m.literal === m.lemma) { return [kata2hira(m.lemmaReading)]; }
   // so literal has kanji, the pronunciation has chouonpu, and the literal and lemma disagree
+
+  // In these markdown-like tables, the columns folow mecabUnidic.ts, and are:
+  // | literal | pronunciation | lemma reading| lemma |
 
   // 多             | オー           | オオイ         | 多い
   // 大阪               | オーサカ           | オオサカ           | オオサカ
@@ -852,20 +864,13 @@ cat inputfile | annotate MODE
 
   (async () => {
     {
-      let x = await analyzeSentence('ある日の朝早く、ジリリリンとおしりたんてい事務所の電話が鳴りました。');
-      console.dir(Array.from(x.particlesConjphrases.conjugatedPhrases.values(), o => o.deconj), {depth: null})
-      console.log('\n===\n');
-      x = await analyzeSentence('鳥の鳴き声が森の静かさを破った');
-      console.dir(Array.from(x.particlesConjphrases.conjugatedPhrases.values(), o => o.deconj), {depth: null})
-      console.log('\n===\n');
-      x = await analyzeSentence('早い');
-      console.dir(Array.from(x.particlesConjphrases.conjugatedPhrases.values(), o => o.deconj), {depth: null})
-      console.log('\n===\n');
-      x = await analyzeSentence('昨日は寒かった');
-      console.dir(Array.from(x.particlesConjphrases.conjugatedPhrases.values(), o => o.deconj), {depth: null})
-      console.log('\n===\n');
-      x = await analyzeSentence('よかった');
-      console.dir(Array.from(x.particlesConjphrases.conjugatedPhrases.values(), o => o.deconj), {depth: null})
+      for (const line of ['ある日の朝早く、ジリリリンとおしりたんてい事務所の電話が鳴りました。',
+                          '鳥の鳴き声が森の静かさを破った', '早い', '昨日はさむかった', 'よかった']) {
+        console.log('\n===\n');
+        const x = await analyzeSentence(line);
+        console.log('deconj')
+        console.dir(Array.from(x.particlesConjphrases.conjugatedPhrases.values(), o => o.deconj), {depth: null})
+      }
       if (Math.random() > -1) { return };
     }
 
