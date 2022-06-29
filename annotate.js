@@ -19,6 +19,7 @@ const jmdict_furigana_node_1 = require("jmdict-furigana-node");
 const jmdict_simplified_node_1 = require("jmdict-simplified-node");
 const kamiya_codec_1 = require("kamiya-codec");
 const mkdirp_1 = __importDefault(require("mkdirp"));
+const chino_particles_1 = require("./chino-particles");
 const jdepp_1 = require("./jdepp");
 const mecabUnidic_1 = require("./mecabUnidic");
 var jmdict_furigana_node_2 = require("jmdict-furigana-node");
@@ -323,7 +324,7 @@ function identifyFillInBlanks(bunsetsus, verbose = false) {
                     const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(bunsetsu.slice(0, pidx));
                     const right = bunsetsuToString(bunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
                     const cloze = generateContextClozed(left, particle.literal, right);
-                    particles.set(cloze.left + cloze.cloze + cloze.right, { cloze, startIdx, endIdx, morphemes: [particle] });
+                    particles.set(cloze.left + cloze.cloze + cloze.right, { chino: chino_particles_1.lookup(cloze.cloze), cloze, startIdx, endIdx, morphemes: [particle] });
                 }
             }
         }

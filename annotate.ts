@@ -24,6 +24,7 @@ import {
 import {adjDeconjugate, verbDeconjugate} from 'kamiya-codec';
 import mkdirp from 'mkdirp';
 
+import {lookup} from './chino-particles';
 import {
   AnalysisResult,
   ConjugatedPhrase,
@@ -369,7 +370,8 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
         const right =
             bunsetsuToString(bunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
         const cloze = generateContextClozed(left, particle.literal, right);
-        particles.set(cloze.left + cloze.cloze + cloze.right, {cloze, startIdx, endIdx, morphemes: [particle]});
+        particles.set(cloze.left + cloze.cloze + cloze.right,
+                      {chino: lookup(cloze.cloze), cloze, startIdx, endIdx, morphemes: [particle]});
       }
     }
   }

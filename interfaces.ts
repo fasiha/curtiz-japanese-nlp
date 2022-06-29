@@ -46,6 +46,7 @@ export interface Particle {
   startIdx: number;
   endIdx: number;
   morphemes: Morpheme[];
+  chino: [number, string[]][];
 }
 export interface FillInTheBlanks {
   particles: Map<string, Particle>;
