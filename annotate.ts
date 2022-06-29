@@ -300,8 +300,7 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
   const conjugatedPhrases: ConjugatedPhrase[] = [];
   const particles: Particle[] = [];
   for (const [bidx, bunsetsu] of bunsetsus.entries()) {
-    const startIdx = bunsetsus.slice(0, -1).map(o => o.length).reduce((p, c) => p + c, 0);
-    const endIdx = startIdx + bunsetsu.length;
+    const startIdx = bunsetsus.slice(0, bidx).map(o => o.length).reduce((p, c) => p + c, 0);
 
     const first = bunsetsu[0];
     if (!first) { continue; }
@@ -324,10 +323,10 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
         (goodBunsetsu.length > 1 && (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject') ||
                                      pos0Last === 'verbal_suru'))) {
       if (verbose) { console.log('^^ included'); }
+      const endIdx = startIdx + goodBunsetsu.length;
       const cloze = bunsetsuToString(goodBunsetsu);
       const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('');
       const right = bunsetsuToString(ignoreRight) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
-      const key = `${startIdx}-${endIdx}`
       const jf = await jmdictFuriganaPromise;
 
       const lemmas = goodBunsetsu.map(o => {
@@ -361,20 +360,56 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
         lemmas
       });
     }
+
+    // Handle particles: identify and look up in Chino's "All About Particles" list
     const particlePredicate = (p: Morpheme) => p.partOfSpeech[0].startsWith('particle') && p.partOfSpeech.length > 1 &&
                                                !p.partOfSpeech[1].startsWith('phrase_final');
     for (const [pidx, particle] of bunsetsu.entries()) {
       if (particlePredicate(particle)) {
+        const startIdxParticle = startIdx + pidx;
+        const endIdx = startIdxParticle + 1;
         const left =
             bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(bunsetsu.slice(0, pidx));
         const right =
             bunsetsuToString(bunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
         const cloze = generateContextClozed(left, particle.literal, right);
-        particles.push({chino: lookup(cloze.cloze), cloze, startIdx, endIdx, morphemes: [particle]});
+        particles.push({chino: lookup(cloze.cloze), cloze, startIdx: startIdxParticle, endIdx, morphemes: [particle]});
       }
     }
   }
-  // for (const x of particles.val)
+  // Try to glue adjacent particles together if they are in Chino's list of particles too
+  const allMorphemes = bunsetsus.flat();
+  for (let i = 0; i < particles.length; i++) {
+    // `4` below means we'll try to glue 3 particles together
+    // `j<=...` has to be `<=` because `j` will be `slice`'s 2nd arg and is exclusive (not inclusive)
+    for (let j = i + 2; (j < i + 4) && (j <= particles.length); j++) {
+      const adjacent = particles.slice(i, j);
+
+      if (!adjacent.every((curr, idx, arr) => arr[idx + 1] ? curr.endIdx === arr[idx + 1].startIdx : true)) {
+        // `adjacent` isn't actually adjacent
+        continue;
+      }
+
+      const combined = adjacent.map(o => o.cloze.cloze).join('');
+      const hits = lookup(combined);
+      if (hits.length) {
+        const first = adjacent[0];
+        const last = adjacent[adjacent.length - 1];
+        const left = bunsetsuToString(allMorphemes.slice(0, first.startIdx));
+        const right = bunsetsuToString(allMorphemes.slice(last.endIdx));
+        const cloze = generateContextClozed(left, combined, right);
+
+        console.log('pushing')
+        particles.push({
+          chino: hits,
+          cloze,
+          startIdx: first.startIdx,
+          endIdx: last.endIdx,
+          morphemes: adjacent.flatMap(o => o.morphemes)
+        });
+      }
+    }
+  }
   return {particles, conjugatedPhrases};
 }
 
@@ -866,12 +901,19 @@ cat inputfile | annotate MODE
 
   (async () => {
     {
-      for (const line of ['ある日の朝早く、ジリリリンとおしりたんてい事務所の電話が鳴りました。',
-                          '鳥の鳴き声が森の静かさを破った', '早い', '昨日はさむかった', 'よかった']) {
+      for (const line of ['動物でも人間の心が分かります',
+                          'ある日の朝早く、ジリリリンとおしりたんてい事務所の電話が鳴りました。',
+                          '鳥の鳴き声が森の静かさを破った',
+                          '早い',
+                          '昨日はさむかった',
+                          'よかった',
+      ]) {
         console.log('\n===\n');
         const x = await analyzeSentence(line);
         console.log('deconj')
-        console.dir(Array.from(x.particlesConjphrases.conjugatedPhrases.values(), o => o.deconj), {depth: null})
+        console.dir(x.particlesConjphrases.conjugatedPhrases.map(o => o.deconj), {depth: null})
+        console.log('particles')
+        console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]))
       }
       if (Math.random() > -1) { return };
     }
