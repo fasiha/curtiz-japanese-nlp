@@ -49,20 +49,9 @@ export interface Particle {
   chino: [number, string[]][];
 }
 export interface FillInTheBlanks {
-  particles: Map<string, Particle>;
-  conjugatedPhrases: Map<string, ConjugatedPhrase>;
+  particles: Particle[];
+  conjugatedPhrases: ConjugatedPhrase[];
 }
-type MapValuesToRecordValues<M> = {
-  [k in keyof M]: Record<string, M[k] extends Map<string, infer X>? X : never>
-};
-export type FillInTheBlanksExport = MapValuesToRecordValues<FillInTheBlanks>;
-/* the above is equivalent to:
-interface FillInTheBlanksExport_equiv {
-  particles: Record<string, ContextCloze>;
-  conjugatedPhrases: Record<string, ConjugatedPhrase>;
-}
-Needed because Maps don't JSON-serialize and and I don't want to replace Map with Record in library code
-*/
 export interface ContextCloze {
   left: string;
   cloze: string;
@@ -83,7 +72,7 @@ export interface v1ResSentenceAnalyzed {
   furigana: Furigana[][];
   hits: ScoreHits[];
   kanjidic: Record<string, SimpleCharacter&{dependencies: SearchMapped<SimpleCharacter|null>[]}>;
-  clozes?: FillInTheBlanksExport;
+  clozes?: FillInTheBlanks;
   tags?: Record<string, string>;
 }
 

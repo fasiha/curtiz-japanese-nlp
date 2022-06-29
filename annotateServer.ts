@@ -16,15 +16,7 @@ import {
   morphemesToFurigana,
   scoreHitsToWords
 } from './annotate';
-import {
-  ScoreHits,
-  v1ReqSentence,
-  v1ReqSentences,
-  v1ResSentence,
-  SearchMapped,
-  FillInTheBlanks,
-  FillInTheBlanksExport
-} from './interfaces';
+import {ScoreHits, v1ReqSentence, v1ReqSentences, v1ResSentence, SearchMapped, FillInTheBlanks} from './interfaces';
 import {invokeMecab, maybeMorphemesToMorphemes, parseMecab, Morpheme} from './mecabUnidic';
 import {setupSimple as kanjidicSetup, SimpleCharacter} from './kanjidic';
 
@@ -105,12 +97,8 @@ async function handleSentence(sentence: string, overrides: Record<string, Furiga
                                                       .children
                                   }]));
 
-  let clozes: undefined|FillInTheBlanksExport = undefined;
-  if (extractParticlesConj) {
-    const {conjugatedPhrases: c, particles: p} = await identifyFillInBlanks(bunsetsus);
-    function convert<T>(map: Map<string, T>): Record<string, T> { return Object.fromEntries(map.entries()); }
-    clozes = { conjugatedPhrases: convert(c), particles: convert(p) }
-  }
+  let clozes: undefined|FillInTheBlanks = undefined;
+  if (extractParticlesConj) { clozes = await identifyFillInBlanks(bunsetsus); }
   const resBody:
       v1ResSentence = {furigana, hits: dictHits, kanjidic: kanjidicHits, clozes, tags: includeWord ? tags : undefined};
   return resBody;

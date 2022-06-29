@@ -297,8 +297,8 @@ function betterMorphemePredicate(m: Morpheme): boolean {
 
 export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = false): Promise<FillInTheBlanks> {
   // Find clozes: particles and conjugated verb/adjective phrases
-  const conjugatedPhrases: Map<string, ConjugatedPhrase> = new Map();
-  const particles: Map<string, Particle> = new Map();
+  const conjugatedPhrases: ConjugatedPhrase[] = [];
+  const particles: Particle[] = [];
   for (const [bidx, bunsetsu] of bunsetsus.entries()) {
     const startIdx = bunsetsus.slice(0, -1).map(o => o.length).reduce((p, c) => p + c, 0);
     const endIdx = startIdx + bunsetsu.length;
@@ -352,7 +352,7 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
       const deconj =
           verbNotAdj ? verbDeconjugate(cloze, dictionaryForm, ichidan) : adjDeconjugate(cloze, dictionaryForm, iAdj);
 
-      conjugatedPhrases.set(key, {
+      conjugatedPhrases.push({
         deconj,
         startIdx,
         endIdx,
@@ -370,11 +370,11 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
         const right =
             bunsetsuToString(bunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
         const cloze = generateContextClozed(left, particle.literal, right);
-        particles.set(cloze.left + cloze.cloze + cloze.right,
-                      {chino: lookup(cloze.cloze), cloze, startIdx, endIdx, morphemes: [particle]});
+        particles.push({chino: lookup(cloze.cloze), cloze, startIdx, endIdx, morphemes: [particle]});
       }
     }
   }
+  // for (const x of particles.val)
   return {particles, conjugatedPhrases};
 }
 
@@ -747,16 +747,16 @@ export async function linesToCurtizMarkdown(lines: string[]) {
     ret.push(results.furigana ? '- @ ' + results.furigana.map(furiganaToRuby).join('') : line);
 
     {
-      if (results.particlesConjphrases.particles.size) {
+      if (results.particlesConjphrases.particles.length) {
         ret.push('  - Particles');
-        for (const [_, {cloze}] of results.particlesConjphrases.particles) {
+        for (const {cloze} of results.particlesConjphrases.particles) {
           ret.push(
               `    - ${cloze.left}${cloze.left || cloze.right ? '[' + cloze.cloze + ']' : cloze.cloze}${cloze.right}`);
         }
       }
-      if (results.particlesConjphrases.conjugatedPhrases.size) {
+      if (results.particlesConjphrases.conjugatedPhrases.length) {
         ret.push('  - Conjugated phrases');
-        for (const [_, c] of results.particlesConjphrases.conjugatedPhrases) {
+        for (const c of results.particlesConjphrases.conjugatedPhrases) {
           const cloze = c.cloze;
           ret.push(`    - ${contextClozeToString(cloze)} | ${c.lemmas.map(furiganaToRuby).join(' + ')}`);
         }

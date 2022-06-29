@@ -253,8 +253,8 @@ function identifyFillInBlanks(bunsetsus, verbose = false) {
     var _a, _b;
     return __awaiter(this, void 0, void 0, function* () {
         // Find clozes: particles and conjugated verb/adjective phrases
-        const conjugatedPhrases = new Map();
-        const particles = new Map();
+        const conjugatedPhrases = [];
+        const particles = [];
         for (const [bidx, bunsetsu] of bunsetsus.entries()) {
             const startIdx = bunsetsus.slice(0, -1).map(o => o.length).reduce((p, c) => p + c, 0);
             const endIdx = startIdx + bunsetsu.length;
@@ -308,7 +308,7 @@ function identifyFillInBlanks(bunsetsus, verbose = false) {
                     }
                 }
                 const deconj = verbNotAdj ? kamiya_codec_1.verbDeconjugate(cloze, dictionaryForm, ichidan) : kamiya_codec_1.adjDeconjugate(cloze, dictionaryForm, iAdj);
-                conjugatedPhrases.set(key, {
+                conjugatedPhrases.push({
                     deconj,
                     startIdx,
                     endIdx,
@@ -324,10 +324,11 @@ function identifyFillInBlanks(bunsetsus, verbose = false) {
                     const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(bunsetsu.slice(0, pidx));
                     const right = bunsetsuToString(bunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
                     const cloze = generateContextClozed(left, particle.literal, right);
-                    particles.set(cloze.left + cloze.cloze + cloze.right, { chino: chino_particles_1.lookup(cloze.cloze), cloze, startIdx, endIdx, morphemes: [particle] });
+                    particles.push({ chino: chino_particles_1.lookup(cloze.cloze), cloze, startIdx, endIdx, morphemes: [particle] });
                 }
             }
         }
+        // for (const x of particles.val)
         return { particles, conjugatedPhrases };
     });
 }
@@ -722,15 +723,15 @@ function linesToCurtizMarkdown(lines) {
             const results = yield analyzeSentence(sentence, overrides);
             ret.push(results.furigana ? '- @ ' + results.furigana.map(furiganaToRuby).join('') : line);
             {
-                if (results.particlesConjphrases.particles.size) {
+                if (results.particlesConjphrases.particles.length) {
                     ret.push('  - Particles');
-                    for (const [_, { cloze }] of results.particlesConjphrases.particles) {
+                    for (const { cloze } of results.particlesConjphrases.particles) {
                         ret.push(`    - ${cloze.left}${cloze.left || cloze.right ? '[' + cloze.cloze + ']' : cloze.cloze}${cloze.right}`);
                     }
                 }
-                if (results.particlesConjphrases.conjugatedPhrases.size) {
+                if (results.particlesConjphrases.conjugatedPhrases.length) {
                     ret.push('  - Conjugated phrases');
-                    for (const [_, c] of results.particlesConjphrases.conjugatedPhrases) {
+                    for (const c of results.particlesConjphrases.conjugatedPhrases) {
                         const cloze = c.cloze;
                         ret.push(`    - ${contextClozeToString(cloze)} | ${c.lemmas.map(furiganaToRuby).join(' + ')}`);
                     }
