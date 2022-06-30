@@ -11,5 +11,18 @@ export function lookup(raw: string) {
   for (const [idx, list] of idxChinoParticles) {
     if (list.some(chino => chino.includes(raw))) { ret.push([idx, list]); }
   }
+
+  const scoreMatch = ([_, v]: typeof idxChinoParticles[0]) => {
+    const hits = v.filter(s => s.includes(raw)).map(s => Math.abs(s.length - raw.length));
+    return [Math.min(...hits), hits.length, v.length];
+    // Exact matches come first (minimize superfluous characters).
+    // Then total number of matches
+    // Finally total number of particles in this group
+  };
+  ret.sort((a, b) => {
+    const a2 = scoreMatch(a);
+    const b2 = scoreMatch(b);
+    return (a2[0] - b2[0]) || (a2[1] - b2[1]) || (a2[2] - b2[2]);
+  })
   return ret;
 }

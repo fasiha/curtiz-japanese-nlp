@@ -399,7 +399,6 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
         const right = bunsetsuToString(allMorphemes.slice(last.endIdx));
         const cloze = generateContextClozed(left, combined, right);
 
-        console.log('pushing')
         particles.push({
           chino: hits,
           cloze,
@@ -914,6 +913,7 @@ cat inputfile | annotate MODE
         console.dir(x.particlesConjphrases.conjugatedPhrases.map(o => o.deconj), {depth: null})
         console.log('particles')
         console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]))
+        p(x.particlesConjphrases.particles.map(o => o.chino))
       }
       if (Math.random() > -1) { return };
     }
