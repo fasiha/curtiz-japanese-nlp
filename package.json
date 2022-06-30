@@ -34,7 +34,7 @@
     "@types/node": "^12.12.21",
     "@types/node-gzip": "^1.1.0",
     "@types/xml2js": "^0.4.5",
-    "tape": "^4.10.1",
+    "tape": "^4.15.1",
     "typescript": "^3.8.3"
   },
   "dependencies": {
