@@ -320,7 +320,7 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
     */
     if ((goodBunsetsu.length === 1 && pos0.startsWith('adjectiv') &&
          (first.inflection?.[0] ? !first.inflection[0].endsWith('conclusive') : true)) ||
-        (goodBunsetsu.length > 1 && (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject') ||
+        (goodBunsetsu.length > 0 && (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject') ||
                                      pos0Last === 'verbal_suru'))) {
       if (verbose) { console.log('^^ included'); }
       const endIdx = startIdx + goodBunsetsu.length;
