@@ -75,7 +75,7 @@ async function handleSentence(sentence: string, overrides: Record<string, Furiga
   }
   const furigana = await morphemesToFurigana(sentence, morphemes, overrides);
   const tags = await tagsPromise;
-  const dictHits = await enumerateDictionaryHits(morphemes, false, 10);
+  const dictHits = await enumerateDictionaryHits(morphemes, true, 10);
   for (let i = 0; i < dictHits.length; i++) {
     for (let j = 0; j < dictHits[i].results.length; j++) {
       const words = await scoreHitsToWords(dictHits[i].results[j].results);
