@@ -344,7 +344,8 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<Fil
 
     const first = bunsetsu[0];
     if (!first) { continue; }
-    const ignoreRight = filterRight(bunsetsu, m => !betterMorphemePredicate(m));
+    const firstQuestionableIdx = bunsetsu.findIndex(m => !betterMorphemePredicate(m));
+    const ignoreRight = firstQuestionableIdx === -1 ? [] : bunsetsu.slice(firstQuestionableIdx);
     const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('');
 
     // we usually want to strip bad morphemes on the right (`ignoreRight`) but sometimes we don't do a good job, e.g.,
@@ -380,11 +381,11 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<Fil
       // copula found with something to its left
       const left =
           bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(bunsetsu.slice(0, copulaIdx));
-      for (let questionableIdx = 0; questionableIdx <= ignoreRight.length; ++questionableIdx) {
-        const goodBunsetsu = bunsetsu.slice(copulaIdx, bunsetsu.length - ignoreRight.length + questionableIdx);
+      for (let questionableIdx = copulaIdx + 1; questionableIdx <= bunsetsu.length; ++questionableIdx) {
+        const goodBunsetsu = bunsetsu.slice(copulaIdx, questionableIdx);
         const middle = bunsetsuToString(goodBunsetsu);
         const right = sentence.slice(left.length + middle.length);
-        const cloze = generateContextClozed(left, middle, right)
+        const cloze = generateContextClozed(left, middle, right);
         const res = await morphemesToConjPhrases(startIdx, goodBunsetsu, cloze)
         if (res.deconj.length) { conjugatedPhrases.push(res); }
       }
@@ -935,7 +936,8 @@ cat inputfile | annotate MODE
 
   (async () => {
     {
-      for (const line of ['どなたからでしたか',
+      for (const line of ['買ったんだ',
+                          'どなたからでしたか？',
                           // '動物でも人間の心が分かります',
                           // 'ある日の朝早く、ジリリリンとおしりたんてい事務所の電話が鳴りました。',
                           // '鳥の鳴き声が森の静かさを破った',

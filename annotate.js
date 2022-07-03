@@ -295,7 +295,8 @@ function identifyFillInBlanks(bunsetsus) {
             if (!first) {
                 continue;
             }
-            const ignoreRight = curtiz_utils_1.filterRight(bunsetsu, m => !betterMorphemePredicate(m));
+            const firstQuestionableIdx = bunsetsu.findIndex(m => !betterMorphemePredicate(m));
+            const ignoreRight = firstQuestionableIdx === -1 ? [] : bunsetsu.slice(firstQuestionableIdx);
             const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('');
             // we usually want to strip bad morphemes on the right (`ignoreRight`) but sometimes we don't do a good job, e.g.,
             // MeCab thinks 急いで's で is a particle and we would ignore it, even though it's part of the Vte form.
@@ -331,8 +332,8 @@ function identifyFillInBlanks(bunsetsus) {
             if (copulaIdx > 0) {
                 // copula found with something to its left
                 const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(bunsetsu.slice(0, copulaIdx));
-                for (let questionableIdx = 0; questionableIdx <= ignoreRight.length; ++questionableIdx) {
-                    const goodBunsetsu = bunsetsu.slice(copulaIdx, bunsetsu.length - ignoreRight.length + questionableIdx);
+                for (let questionableIdx = copulaIdx + 1; questionableIdx <= bunsetsu.length; ++questionableIdx) {
+                    const goodBunsetsu = bunsetsu.slice(copulaIdx, questionableIdx);
                     const middle = bunsetsuToString(goodBunsetsu);
                     const right = sentence.slice(left.length + middle.length);
                     const cloze = generateContextClozed(left, middle, right);
@@ -902,7 +903,8 @@ cat inputfile | annotate MODE
     })(Mode || (Mode = {}));
     (() => __awaiter(void 0, void 0, void 0, function* () {
         {
-            for (const line of ['どなたからでしたか',
+            for (const line of ['買ったんだ',
+                'どなたからでしたか？',
             ]) {
                 console.log('\n===\n');
                 const x = yield analyzeSentence(line);
