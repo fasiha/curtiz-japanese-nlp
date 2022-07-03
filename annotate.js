@@ -351,7 +351,16 @@ function identifyFillInBlanks(bunsetsus) {
                     const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(bunsetsu.slice(0, pidx));
                     const right = bunsetsuToString(bunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
                     const cloze = generateContextClozed(left, particle.literal, right);
-                    particles.push({ chino: chino_particles_1.lookup(cloze.cloze), cloze, startIdx: startIdxParticle, endIdx, morphemes: [particle] });
+                    const chino = chino_particles_1.lookup(cloze.cloze);
+                    if (particle.literal !== particle.lemma) {
+                        const chinoLemma = chino_particles_1.lookup(particle.lemma);
+                        for (const [chinoNum, chinoStr] of chinoLemma) {
+                            if (!chino.find(([c]) => c === chinoNum)) {
+                                chino.push([chinoNum, chinoStr]);
+                            }
+                        }
+                    }
+                    particles.push({ chino, cloze, startIdx: startIdxParticle, endIdx, morphemes: [particle] });
                 }
             }
         }

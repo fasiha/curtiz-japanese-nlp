@@ -401,7 +401,14 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<Fil
         const right =
             bunsetsuToString(bunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
         const cloze = generateContextClozed(left, particle.literal, right);
-        particles.push({chino: lookup(cloze.cloze), cloze, startIdx: startIdxParticle, endIdx, morphemes: [particle]});
+        const chino = lookup(cloze.cloze);
+        if (particle.literal !== particle.lemma) {
+          const chinoLemma = lookup(particle.lemma);
+          for (const [chinoNum, chinoStr] of chinoLemma) {
+            if (!chino.find(([c]) => c === chinoNum)) { chino.push([chinoNum, chinoStr]); }
+          }
+        }
+        particles.push({chino, cloze, startIdx: startIdxParticle, endIdx, morphemes: [particle]});
       }
     }
   }
