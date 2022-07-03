@@ -276,7 +276,7 @@ function morphemesToConjPhrases(startIdx, goodBunsetsu, fullCloze) {
         const pos0 = first.partOfSpeech[0];
         const pos0Last = first.partOfSpeech[first.partOfSpeech.length - 1];
         const verbNotAdj = pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0Last === 'verbal_suru';
-        const ichidan = (_a = first.inflectionType) === null || _a === void 0 ? void 0 : _a[0].startsWith('ichidan');
+        const ichidan = (_a = first.inflectionType) === null || _a === void 0 ? void 0 : _a[0].includes('ichidan');
         const iAdj = pos0.endsWith('adjective_i');
         const deconj = verbNotAdj ? kamiya_codec_1.verbDeconjugate(cloze, dictionaryForm, ichidan) : kamiya_codec_1.adjDeconjugate(cloze, dictionaryForm, iAdj);
         return ({ deconj, startIdx, endIdx, morphemes: goodBunsetsu, cloze: fullCloze, lemmas });
