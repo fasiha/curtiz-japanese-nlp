@@ -334,8 +334,9 @@ async function morphemesToConjPhrases(
   return ({deconj, startIdx, endIdx, morphemes: goodBunsetsu, cloze: fullCloze, lemmas});
 }
 
+// Find clozes: particles and conjugated verb/adjective phrases
 export async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<FillInTheBlanks> {
-  // Find clozes: particles and conjugated verb/adjective phrases
+  const sentence = bunsetsus.map(bunsetsuToString).join('');
   const conjugatedPhrases: ConjugatedPhrase[] = [];
   const particles: Particle[] = [];
   for (const [bidx, bunsetsu] of bunsetsus.entries()) {
@@ -361,9 +362,9 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<Fil
            (first.inflection?.[0] ? !first.inflection[0].endsWith('conclusive') : true)) ||
           (goodBunsetsu.length > 0 && (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject') ||
                                        pos0Last === 'verbal_suru'))) {
-        const right = bunsetsuToString(bunsetsu.slice(goodBunsetsu.length + questionableIdx)) +
-                      bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
-        const cloze = generateContextClozed(left, bunsetsuToString(goodBunsetsu), right)
+        const middle = bunsetsuToString(goodBunsetsu);
+        const right = sentence.slice(left.length + middle.length);
+        const cloze = generateContextClozed(left, middle, right)
         const res = await morphemesToConjPhrases(startIdx, goodBunsetsu, cloze)
         if (res.deconj.length === 0 && questionableIdx > 0) { continue; }
         conjugatedPhrases.push(res);
@@ -371,6 +372,23 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<Fil
     }
     // We're not done with conjugated phrases yet. JDepP packs da/desu into the preceding bunsetsu,
     // which prevents the deconjugator from finding them.
+    const copulaIdx = bunsetsu.findIndex(m => {
+      const [a = '', b = ''] = m.inflectionType || [];
+      return a.startsWith('aux') && (b.startsWith('desu') || b.startsWith('da'));
+    });
+    if (copulaIdx > 0) {
+      // copula found with something to its left
+      const left =
+          bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(bunsetsu.slice(0, copulaIdx));
+      for (let questionableIdx = 0; questionableIdx <= ignoreRight.length; ++questionableIdx) {
+        const goodBunsetsu = bunsetsu.slice(copulaIdx, bunsetsu.length - ignoreRight.length + questionableIdx);
+        const middle = bunsetsuToString(goodBunsetsu);
+        const right = sentence.slice(left.length + middle.length);
+        const cloze = generateContextClozed(left, middle, right)
+        const res = await morphemesToConjPhrases(startIdx, goodBunsetsu, cloze)
+        if (res.deconj.length) { conjugatedPhrases.push(res); }
+      }
+    }
 
     // Handle particles: identify and look up in Chino's "All About Particles" list
     const particlePredicate = (p: Morpheme) => p.partOfSpeech[0].startsWith('particle') && p.partOfSpeech.length > 1 &&
@@ -913,11 +931,11 @@ cat inputfile | annotate MODE
     {
       for (const line of ['どなたからでしたか',
                           // '動物でも人間の心が分かります',
-                          //                   'ある日の朝早く、ジリリリンとおしりたんてい事務所の電話が鳴りました。',
-                          //                   '鳥の鳴き声が森の静かさを破った',
-                          //                   '早い',
-                          //                   '昨日はさむかった',
-                          //                   'よかった',
+                          // 'ある日の朝早く、ジリリリンとおしりたんてい事務所の電話が鳴りました。',
+                          // '鳥の鳴き声が森の静かさを破った',
+                          // '早い',
+                          // '昨日はさむかった',
+                          // 'よかった',
       ]) {
         console.log('\n===\n');
         const x = await analyzeSentence(line);

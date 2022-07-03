@@ -282,10 +282,11 @@ function morphemesToConjPhrases(startIdx, goodBunsetsu, fullCloze) {
         return ({ deconj, startIdx, endIdx, morphemes: goodBunsetsu, cloze: fullCloze, lemmas });
     });
 }
+// Find clozes: particles and conjugated verb/adjective phrases
 function identifyFillInBlanks(bunsetsus) {
     var _a;
     return __awaiter(this, void 0, void 0, function* () {
-        // Find clozes: particles and conjugated verb/adjective phrases
+        const sentence = bunsetsus.map(bunsetsuToString).join('');
         const conjugatedPhrases = [];
         const particles = [];
         for (const [bidx, bunsetsu] of bunsetsus.entries()) {
@@ -311,9 +312,9 @@ function identifyFillInBlanks(bunsetsus) {
                     (((_a = first.inflection) === null || _a === void 0 ? void 0 : _a[0]) ? !first.inflection[0].endsWith('conclusive') : true)) ||
                     (goodBunsetsu.length > 0 && (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject') ||
                         pos0Last === 'verbal_suru'))) {
-                    const right = bunsetsuToString(bunsetsu.slice(goodBunsetsu.length + questionableIdx)) +
-                        bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
-                    const cloze = generateContextClozed(left, bunsetsuToString(goodBunsetsu), right);
+                    const middle = bunsetsuToString(goodBunsetsu);
+                    const right = sentence.slice(left.length + middle.length);
+                    const cloze = generateContextClozed(left, middle, right);
                     const res = yield morphemesToConjPhrases(startIdx, goodBunsetsu, cloze);
                     if (res.deconj.length === 0 && questionableIdx > 0) {
                         continue;
@@ -323,6 +324,24 @@ function identifyFillInBlanks(bunsetsus) {
             }
             // We're not done with conjugated phrases yet. JDepP packs da/desu into the preceding bunsetsu,
             // which prevents the deconjugator from finding them.
+            const copulaIdx = bunsetsu.findIndex(m => {
+                const [a = '', b = ''] = m.inflectionType || [];
+                return a.startsWith('aux') && (b.startsWith('desu') || b.startsWith('da'));
+            });
+            if (copulaIdx > 0) {
+                // copula found with something to its left
+                const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(bunsetsu.slice(0, copulaIdx));
+                for (let questionableIdx = 0; questionableIdx <= ignoreRight.length; ++questionableIdx) {
+                    const goodBunsetsu = bunsetsu.slice(copulaIdx, bunsetsu.length - ignoreRight.length + questionableIdx);
+                    const middle = bunsetsuToString(goodBunsetsu);
+                    const right = sentence.slice(left.length + middle.length);
+                    const cloze = generateContextClozed(left, middle, right);
+                    const res = yield morphemesToConjPhrases(startIdx, goodBunsetsu, cloze);
+                    if (res.deconj.length) {
+                        conjugatedPhrases.push(res);
+                    }
+                }
+            }
             // Handle particles: identify and look up in Chino's "All About Particles" list
             const particlePredicate = (p) => p.partOfSpeech[0].startsWith('particle') && p.partOfSpeech.length > 1 &&
                 !p.partOfSpeech[1].startsWith('phrase_final');
