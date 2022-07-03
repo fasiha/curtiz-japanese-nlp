@@ -391,8 +391,7 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<Fil
     }
 
     // Handle particles: identify and look up in Chino's "All About Particles" list
-    const particlePredicate = (p: Morpheme) => p.partOfSpeech[0].startsWith('particle') && p.partOfSpeech.length > 1 &&
-                                               !p.partOfSpeech[1].startsWith('phrase_final');
+    const particlePredicate = (p: Morpheme) => p.partOfSpeech[0].startsWith('particle') && p.partOfSpeech.length > 1;
     for (const [pidx, particle] of bunsetsu.entries()) {
       if (particlePredicate(particle)) {
         const startIdxParticle = startIdx + pidx;
