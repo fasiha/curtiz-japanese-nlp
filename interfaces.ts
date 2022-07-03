@@ -1,7 +1,7 @@
 import * as t from 'io-ts';
 import {Furigana} from "jmdict-furigana-node";
 import {Word} from "jmdict-simplified-node/interfaces";
-import {AdjDeconjugated, Deconjugated, DeconjugatedAuxiliary} from 'kamiya-codec';
+import {AdjDeconjugated, Deconjugated} from 'kamiya-codec';
 
 import {SimpleCharacter} from './kanjidic';
 import {Morpheme} from './mecabUnidic';
@@ -39,7 +39,7 @@ export interface ConjugatedPhrase {
   cloze: ContextCloze;
   lemmas: Furigana[][];
   morphemes: Morpheme[];
-  deconj: AdjDeconjugated[]|(DeconjugatedAuxiliary|Deconjugated)[];
+  deconj: AdjDeconjugated[]|Deconjugated[];
 }
 export interface Particle {
   cloze: ContextCloze;
