@@ -307,58 +307,67 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
     const pos0 = first.partOfSpeech[0];
     const pos0Last = first.partOfSpeech[first.partOfSpeech.length - 1];
     const ignoreRight = filterRight(bunsetsu, m => !betterMorphemePredicate(m));
-    const goodBunsetsu = ignoreRight.length === 0 ? bunsetsu : bunsetsu.slice(0, -ignoreRight.length);
-    if (verbose) {
-      const pr = (m: Morpheme) => `${m.literal} pos ${m.partOfSpeech.join('/')} | ${
-          (m.inflectionType || []).join('/')} _ ${(m.inflection || []).join('/')}`;
-      console.log('-- ' + goodBunsetsu.length +
-                  bunsetsu.map((o, i) => (i >= goodBunsetsu.length ? `X(${o.literal})` : pr(o))).join('\n   '));
-    }
-    /*
-    If a bunsetsu has >1 morphemes, check if it's a verb or an adjective (i or na).
-    If it's just one, make sure it's an adjective that's not a conclusive (catches 朝早く)
-    */
-    if ((goodBunsetsu.length === 1 && pos0.startsWith('adjectiv') &&
-         (first.inflection?.[0] ? !first.inflection[0].endsWith('conclusive') : true)) ||
-        (goodBunsetsu.length > 0 && (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject') ||
-                                     pos0Last === 'verbal_suru'))) {
-      if (verbose) { console.log('^^ included'); }
-      const endIdx = startIdx + goodBunsetsu.length;
-      const cloze = bunsetsuToString(goodBunsetsu);
-      const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('');
-      const right = bunsetsuToString(ignoreRight) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
-      const jf = await jmdictFuriganaPromise;
+    const verbNotAdj = pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0Last === 'verbal_suru';
+    const ichidan = first.inflectionType?.[0].startsWith('ichidan');
+    const iAdj = pos0.endsWith('adjective_i');
+    const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('');
 
-      const lemmas = goodBunsetsu.map(o => {
-        const entries = jf.textToEntry.get(o.lemma) || [];
-        const lemmaReading = kata2hira(o.lemmaReading);
-        const entry = entries.find(e => e.reading === lemmaReading);
-        return entry ? entry.furigana : o.lemma === lemmaReading ? [lemmaReading] : [{ruby: o.lemma, rt: lemmaReading}];
-      });
-
-      const verbNotAdj = pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0Last === 'verbal_suru';
-      const ichidan = first.inflectionType?.[0].startsWith('ichidan');
-      const iAdj = pos0.endsWith('adjective_i');
-      let dictionaryForm = goodBunsetsu[0].lemma;
-      if (!hasKanji(cloze) && hasKanji(dictionaryForm)) {
-        // deconjugate won't find anything. Look at lemmas and try to kana-ify the dictionaryForm
-        for (const lemma of lemmas.flat()) {
-          if (typeof lemma === 'string') { continue; }
-          const {ruby, rt} = lemma;
-          dictionaryForm = dictionaryForm.replace(ruby, rt);
+    // we usually want to strip bad morphemes on the right (`ignoreRight`) but sometimes we don't do a good job, e.g.,
+    // MeCab thinks 急いで's で is a particle and we would ignore it, even though it's part of the Vte form.
+    // So we loop over those bad morphemes just in case the deconjugator finds something.
+    for (let questionableIdx = 0; questionableIdx <= ignoreRight.length; ++questionableIdx) {
+      const goodBunsetsu = bunsetsu.slice(0, bunsetsu.length - ignoreRight.length + questionableIdx);
+      /*
+      If a bunsetsu has >1 morphemes, check if it's a verb or an adjective (i or na).
+      If it's just one, make sure it's an adjective that's not a conclusive (catches 朝早く)
+      */
+      if ((goodBunsetsu.length === 1 && pos0.startsWith('adjectiv') &&
+           (first.inflection?.[0] ? !first.inflection[0].endsWith('conclusive') : true)) ||
+          (goodBunsetsu.length > 0 && (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject') ||
+                                       pos0Last === 'verbal_suru'))) {
+        if (verbose) {
+          const pr = (m: Morpheme) => `${m.literal} pos ${m.partOfSpeech.join('/')} | ${
+              (m.inflectionType || []).join('/')} _ ${(m.inflection || []).join('/')}`;
+          console.log('-- ' + goodBunsetsu.length +
+                      bunsetsu.map((o, i) => (i >= goodBunsetsu.length ? `X(${o.literal})` : pr(o))).join('\n   '));
         }
-      }
-      const deconj =
-          verbNotAdj ? verbDeconjugate(cloze, dictionaryForm, ichidan) : adjDeconjugate(cloze, dictionaryForm, iAdj);
+        const endIdx = startIdx + goodBunsetsu.length;
+        const cloze = bunsetsuToString(goodBunsetsu);
+        const right = bunsetsuToString(bunsetsu.slice(goodBunsetsu.length + questionableIdx)) +
+                      bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
+        const jf = await jmdictFuriganaPromise;
 
-      conjugatedPhrases.push({
-        deconj,
-        startIdx,
-        endIdx,
-        morphemes: goodBunsetsu,
-        cloze: generateContextClozed(left, cloze, right),
-        lemmas
-      });
+        const lemmas = goodBunsetsu.map(o => {
+          const entries = jf.textToEntry.get(o.lemma) || [];
+          const lemmaReading = kata2hira(o.lemmaReading);
+          const entry = entries.find(e => e.reading === lemmaReading);
+          return entry                      ? entry.furigana
+                 : o.lemma === lemmaReading ? [lemmaReading]
+                                            : [{ruby: o.lemma, rt: lemmaReading}];
+        });
+
+        let dictionaryForm = goodBunsetsu[0].lemma;
+        if (!hasKanji(cloze) && hasKanji(dictionaryForm)) {
+          // deconjugate won't find anything. Look at lemmas and try to kana-ify the dictionaryForm
+          for (const lemma of lemmas.flat()) {
+            if (typeof lemma === 'string') { continue; }
+            const {ruby, rt} = lemma;
+            dictionaryForm = dictionaryForm.replace(ruby, rt);
+          }
+        }
+        const deconj =
+            verbNotAdj ? verbDeconjugate(cloze, dictionaryForm, ichidan) : adjDeconjugate(cloze, dictionaryForm, iAdj);
+        if (deconj.length === 0 && questionableIdx > 0) { continue; }
+
+        conjugatedPhrases.push({
+          deconj,
+          startIdx,
+          endIdx,
+          morphemes: goodBunsetsu,
+          cloze: generateContextClozed(left, cloze, right),
+          lemmas
+        });
+      }
     }
 
     // Handle particles: identify and look up in Chino's "All About Particles" list
