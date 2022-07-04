@@ -363,7 +363,7 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][]): Promise<Fil
       if ((goodBunsetsu.length === 1 && pos0.startsWith('adjectiv') &&
            (first.inflection?.[0] ? !first.inflection[0].endsWith('conclusive') : true)) ||
           (goodBunsetsu.length > 0 && (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject') ||
-                                       pos0Last === 'verbal_suru'))) {
+                                       pos0Last === 'verbal_suru' || pos0Last.startsWith('adjectival')))) {
         const middle = bunsetsuToString(goodBunsetsu);
         const right = sentence.slice(left.length + middle.length);
         const cloze = generateContextClozed(left, middle, right)
