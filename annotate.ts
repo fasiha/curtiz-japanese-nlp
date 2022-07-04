@@ -311,7 +311,9 @@ async function morphemesToConjPhrases(
     return entry ? entry.furigana : o.lemma === lemmaReading ? [lemmaReading] : [{ruby: o.lemma, rt: lemmaReading}];
   });
 
-  let dictionaryForm = goodBunsetsu[0].lemma;
+  let dictionaryForm = goodBunsetsu[0].lemma.split('-')[0];
+  // sometimes the lemma is too helpful: "ワンダフル-wonderful", so split on dash
+
   if (!hasKanji(cloze) && hasKanji(dictionaryForm)) {
     // deconjugate won't find anything. Look at lemmas and try to kana-ify the dictionaryForm
     for (const lemma of lemmas.flat()) {
