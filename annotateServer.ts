@@ -19,6 +19,7 @@ import {
 import {ScoreHits, v1ReqSentence, v1ReqSentences, v1ResSentence, SearchMapped, FillInTheBlanks} from './interfaces';
 import {invokeMecab, maybeMorphemesToMorphemes, parseMecab, Morpheme} from './mecabUnidic';
 import {setupSimple as kanjidicSetup, SimpleCharacter} from './kanjidic';
+import {Bunsetsu} from './jdepp';
 
 const tagsPromise = jmdictPromise.then(({db}) => db)
                         .then(db => getField(db, 'tags'))
@@ -64,15 +65,9 @@ async function handleSentence(sentence: string, overrides: Record<string, Furiga
     return resBody;
   }
 
-  let morphemes: Morpheme[];
-  let bunsetsus: Morpheme[][] = [];
-  if (!extractParticlesConj) {
-    morphemes = maybeMorphemesToMorphemes(parseMecab(sentence, await invokeMecab(sentence))[0].filter(o => !!o));
-  } else {
-    const res = await mecabJdepp(sentence)
-    morphemes = res.morphemes;
-    bunsetsus = res.bunsetsus;
-  }
+  const res = await mecabJdepp(sentence)
+  const morphemes: Morpheme[] = res.morphemes;
+  const bunsetsus: Bunsetsu<Morpheme>[] = res.bunsetsus;
   const furigana = await morphemesToFurigana(sentence, morphemes, overrides);
   const tags = await tagsPromise;
   const dictHits = await enumerateDictionaryHits(morphemes, true, 10);
@@ -98,9 +93,9 @@ async function handleSentence(sentence: string, overrides: Record<string, Furiga
                                   }]));
 
   let clozes: undefined|FillInTheBlanks = undefined;
-  if (extractParticlesConj) { clozes = await identifyFillInBlanks(bunsetsus); }
-  const resBody:
-      v1ResSentence = {furigana, hits: dictHits, kanjidic: kanjidicHits, clozes, tags: includeWord ? tags : undefined};
+  if (extractParticlesConj) { clozes = await identifyFillInBlanks(bunsetsus.map(o => o.morphemes)); }
+  const resBody: v1ResSentence =
+      {furigana, hits: dictHits, kanjidic: kanjidicHits, clozes, tags: includeWord ? tags : undefined, bunsetsus};
   return resBody;
 }
 

@@ -3,6 +3,7 @@ import {Furigana} from "jmdict-furigana-node";
 import {Word} from "jmdict-simplified-node/interfaces";
 import {AdjDeconjugated, Deconjugated} from 'kamiya-codec';
 
+import {Bunsetsu} from './jdepp';
 import {SimpleCharacter} from './kanjidic';
 import {Morpheme} from './mecabUnidic';
 
@@ -74,6 +75,7 @@ export interface v1ResSentenceAnalyzed {
   kanjidic: Record<string, SimpleCharacter&{dependencies: SearchMapped<SimpleCharacter|null>[]}>;
   clozes?: FillInTheBlanks;
   tags?: Record<string, string>;
+  bunsetsus: Bunsetsu<Morpheme>[];
 }
 
 export type SearchMapped<T> = {

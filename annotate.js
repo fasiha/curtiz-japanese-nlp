@@ -745,7 +745,7 @@ function analyzeSentence(sentence, overrides = {}) {
         const parsed = yield mecabJdepp(sentence);
         // Promises
         const furiganaP = curtiz_utils_1.hasKanji(sentence) ? morphemesToFurigana(sentence, parsed.morphemes, overrides) : undefined;
-        const particlesConjphrasesP = identifyFillInBlanks(parsed.bunsetsus);
+        const particlesConjphrasesP = identifyFillInBlanks(parsed.bunsetsus.map(o => o.morphemes));
         const dictionaryHitsP = enumerateDictionaryHits(parsed.morphemes);
         let [furigana, particlesConjphrases, dictionaryHits] = yield Promise.all([furiganaP, particlesConjphrasesP, dictionaryHitsP]);
         return { furigana, particlesConjphrases, dictionaryHits };
@@ -910,18 +910,19 @@ cat inputfile | annotate MODE
     }
     (() => __awaiter(void 0, void 0, void 0, function* () {
         {
-            for (const line of ['お待ちしておりました',
-                '買ったんだ',
+            for (const line of [' ブラックシャドー団は集団で盗みを行う窃盗団でお金持ちの家を狙い、家にある物全て根こそぎ盗んでいきます。',
             ]) {
                 console.log('\n===\n');
                 const x = yield analyzeSentence(line);
-                console.log('conj');
-                p(x.particlesConjphrases.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')));
-                console.log('deconj');
-                console.dir(x.particlesConjphrases.conjugatedPhrases.map(o => o.deconj.map(m => renderDeconjugation(m))), { depth: null });
-                console.log('particles');
-                console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]));
-                p(x.particlesConjphrases.particles.map(o => o.chino));
+                // console.log('conj')
+                // p(x.particlesConjphrases.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')))
+                // console.log('deconj')
+                // console.dir(x.particlesConjphrases.conjugatedPhrases.map(
+                //                 o => (o.deconj as (AdjDeconjugated | Deconjugated)[]).map(m => renderDeconjugation(m))),
+                //             {depth: null})
+                // console.log('particles')
+                // console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]))
+                // p(x.particlesConjphrases.particles.map(o => o.chino))
             }
             if (Math.random() > -1) {
                 return;

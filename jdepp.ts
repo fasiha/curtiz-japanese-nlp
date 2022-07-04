@@ -19,15 +19,25 @@ export function parseJdepp(original: string, result: string) {
   return partitionBy(pieces, v => v.startsWith('*'));
 }
 
-export async function addJdepp<Morpheme>(raw: string, morphemes: Morpheme[]): Promise<Morpheme[][]> {
-  let jdeppRaw = await invokeJdepp(raw);
-  let jdeppSplit = parseJdepp('', jdeppRaw);
-  let bunsetsus: Morpheme[][] = [];
+export interface Bunsetsu<Morpheme> {
+  morphemes: Morpheme[];
+  idx: number;
+  parent: number;
+}
+
+export async function addJdepp<Morpheme>(raw: string, morphemes: Morpheme[]): Promise<Bunsetsu<Morpheme>[]> {
+  const jdeppRaw = await invokeJdepp(raw);
+  const jdeppSplit = parseJdepp('', jdeppRaw);
+  const bunsetsus: Bunsetsu<Morpheme>[] = [];
   {
     let added = 0;
     for (let bunsetsu of jdeppSplit) {
       // -1 because each `bunsetsu` array here will contain a header before the morphemes
-      bunsetsus.push(morphemes.slice(added, added + bunsetsu.length - 1));
+      const thisMorphemes = morphemes.slice(added, added + bunsetsu.length - 1);
+      const match = bunsetsu[0].match(/^\*\s+(?<child>[0-9]+)\s+(?<parent>[-0-9]+)D/);
+      if (!match?.groups) { throw new Error('problem parsing Jdepp output') }
+      const {child, parent} = match.groups;
+      bunsetsus.push({morphemes: thisMorphemes, idx: +child, parent: +parent});
       added += bunsetsu.length - 1;
     }
   }

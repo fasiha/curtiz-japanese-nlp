@@ -34,7 +34,7 @@ import {
   ScoreHit,
   ScoreHits
 } from './interfaces';
-import {addJdepp} from './jdepp';
+import {addJdepp, Bunsetsu} from './jdepp';
 import {
   goodMorphemePredicate,
   invokeMecab,
@@ -66,7 +66,7 @@ const DICTIONARY_LIMIT = 20;
 
 interface MecabJdeppParsed {
   morphemes: Morpheme[];
-  bunsetsus: Morpheme[][];
+  bunsetsus: Bunsetsu<Morpheme>[];
 }
 export async function mecabJdepp(sentence: string): Promise<MecabJdeppParsed> {
   let rawMecab = await invokeMecab(sentence);
@@ -777,7 +777,7 @@ export async function analyzeSentence(sentence: string,
 
   // Promises
   const furiganaP = hasKanji(sentence) ? morphemesToFurigana(sentence, parsed.morphemes, overrides) : undefined;
-  const particlesConjphrasesP = identifyFillInBlanks(parsed.bunsetsus);
+  const particlesConjphrasesP = identifyFillInBlanks(parsed.bunsetsus.map(o => o.morphemes));
   const dictionaryHitsP = enumerateDictionaryHits(parsed.morphemes);
 
   let [furigana, particlesConjphrases, dictionaryHits] =
@@ -942,27 +942,30 @@ cat inputfile | annotate MODE
 
   (async () => {
     {
-      for (const line of ['お待ちしておりました',
-                          '買ったんだ',
-                          // 'どなたからでしたか？',
-                          // '動物でも人間の心が分かります',
-                          // 'ある日の朝早く、ジリリリンとおしりたんてい事務所の電話が鳴りました。',
-                          // '鳥の鳴き声が森の静かさを破った',
-                          // '早い',
-                          // '昨日はさむかった',
-                          // 'よかった',
+      for (
+          const line of
+              [' ブラックシャドー団は集団で盗みを行う窃盗団でお金持ちの家を狙い、家にある物全て根こそぎ盗んでいきます。',
+               // 'お待ちしておりました',
+               // '買ったんだ',
+               // 'どなたからでしたか？',
+               // '動物でも人間の心が分かります',
+               // 'ある日の朝早く、ジリリリンとおしりたんてい事務所の電話が鳴りました。',
+               // '鳥の鳴き声が森の静かさを破った',
+               // '早い',
+               // '昨日はさむかった',
+               // 'よかった',
       ]) {
         console.log('\n===\n');
         const x = await analyzeSentence(line);
-        console.log('conj')
-        p(x.particlesConjphrases.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')))
-        console.log('deconj')
-        console.dir(x.particlesConjphrases.conjugatedPhrases.map(
-                        o => (o.deconj as (AdjDeconjugated | Deconjugated)[]).map(m => renderDeconjugation(m))),
-                    {depth: null})
-        console.log('particles')
-        console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]))
-        p(x.particlesConjphrases.particles.map(o => o.chino))
+        // console.log('conj')
+        // p(x.particlesConjphrases.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')))
+        // console.log('deconj')
+        // console.dir(x.particlesConjphrases.conjugatedPhrases.map(
+        //                 o => (o.deconj as (AdjDeconjugated | Deconjugated)[]).map(m => renderDeconjugation(m))),
+        //             {depth: null})
+        // console.log('particles')
+        // console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]))
+        // p(x.particlesConjphrases.particles.map(o => o.chino))
       }
       if (Math.random() > -1) { return };
     }

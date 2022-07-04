@@ -35,14 +35,20 @@ function parseJdepp(original, result) {
 exports.parseJdepp = parseJdepp;
 function addJdepp(raw, morphemes) {
     return __awaiter(this, void 0, void 0, function* () {
-        let jdeppRaw = yield invokeJdepp(raw);
-        let jdeppSplit = parseJdepp('', jdeppRaw);
-        let bunsetsus = [];
+        const jdeppRaw = yield invokeJdepp(raw);
+        const jdeppSplit = parseJdepp('', jdeppRaw);
+        const bunsetsus = [];
         {
             let added = 0;
             for (let bunsetsu of jdeppSplit) {
                 // -1 because each `bunsetsu` array here will contain a header before the morphemes
-                bunsetsus.push(morphemes.slice(added, added + bunsetsu.length - 1));
+                const thisMorphemes = morphemes.slice(added, added + bunsetsu.length - 1);
+                const match = bunsetsu[0].match(/^\*\s+(?<child>[0-9]+)\s+(?<parent>[-0-9]+)D/);
+                if (!(match === null || match === void 0 ? void 0 : match.groups)) {
+                    throw new Error('problem parsing Jdepp output');
+                }
+                const { child, parent } = match.groups;
+                bunsetsus.push({ morphemes: thisMorphemes, idx: +child, parent: +parent });
                 added += bunsetsu.length - 1;
             }
         }
