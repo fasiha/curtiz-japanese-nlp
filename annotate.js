@@ -291,6 +291,7 @@ function identifyFillInBlanks(bunsetsus) {
         const particles = [];
         for (const [bidx, bunsetsu] of bunsetsus.entries()) {
             const startIdx = bunsetsus.slice(0, bidx).map(o => o.length).reduce((p, c) => p + c, 0);
+            // sometimes the first morpheme might be ご・お "prefix".
             const first = bunsetsu[0];
             if (!first) {
                 continue;
@@ -324,10 +325,10 @@ function identifyFillInBlanks(bunsetsus) {
                 }
             }
             // We're not done with conjugated phrases yet. JDepP packs da/desu into the preceding bunsetsu,
-            // which prevents the deconjugator from finding them.
+            // which prevents the deconjugator from finding them. It'll also do something similar for noun+suru
             const copulaIdx = bunsetsu.findIndex(m => {
                 const [a = '', b = ''] = m.inflectionType || [];
-                return a.startsWith('aux') && (b.startsWith('desu') || b.startsWith('da'));
+                return (a.startsWith('aux') && (b.startsWith('desu') || b.startsWith('da'))) || m.lemma === '為る';
             });
             if (copulaIdx > 0) {
                 // copula found with something to its left
@@ -901,17 +902,23 @@ cat inputfile | annotate MODE
         Mode["furigana"] = "furigana";
         Mode["furiganaDict"] = "furigana-dict";
     })(Mode || (Mode = {}));
+    function renderDeconjugation(d) {
+        if ("auxiliaries" in d) {
+            return `${d.auxiliaries.join(" + ")} + ${d.conjugation}`;
+        }
+        return d.conjugation;
+    }
     (() => __awaiter(void 0, void 0, void 0, function* () {
         {
-            for (const line of ['買ったんだ',
-                'どなたからでしたか？',
+            for (const line of ['お待ちしておりました',
+                '買ったんだ',
             ]) {
                 console.log('\n===\n');
                 const x = yield analyzeSentence(line);
                 console.log('conj');
-                p(x.particlesConjphrases.conjugatedPhrases);
+                p(x.particlesConjphrases.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')));
                 console.log('deconj');
-                console.dir(x.particlesConjphrases.conjugatedPhrases.map(o => o.deconj), { depth: null });
+                console.dir(x.particlesConjphrases.conjugatedPhrases.map(o => o.deconj.map(m => renderDeconjugation(m))), { depth: null });
                 console.log('particles');
                 console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]));
                 p(x.particlesConjphrases.particles.map(o => o.chino));
