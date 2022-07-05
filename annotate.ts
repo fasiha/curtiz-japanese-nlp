@@ -787,7 +787,7 @@ export async function analyzeSentence(sentence: string,
   return {furigana, particlesConjphrases, dictionaryHits};
 }
 
-export async function scoreHitsToWords(hits: ScoreHit[]) {
+export async function jmdictIdsToWords(hits: {wordId: string}[]) {
   const {db} = await jmdictPromise;
   return idsToWords(db, hits.map(o => o.wordId));
 }
@@ -841,7 +841,7 @@ export async function linesToCurtizMarkdown(lines: string[]) {
         for (const fromEnd of fromStart.results) {
           ret.push(`  - Vocab: ${contextClozeOrStringToString(fromEnd.run)} INFO`);
           const hits = fromEnd.results.slice(0, MAX_LINES);
-          const words = await scoreHitsToWords(hits);
+          const words = await jmdictIdsToWords(hits);
           for (const [wi, w] of words.entries()) {
             ret.push('    - ' + hits[wi].search + ' | ' + displayWordLight(w, tags));
           }
@@ -895,7 +895,7 @@ export async function linesToFurigana(lines: string[], buildDictionary = false) 
         const dictHits = await enumerateDictionaryHits(parsed.morphemes, false, 10);
         for (let i = 0; i < dictHits.length; i++) {
           for (let j = 0; j < dictHits[i].results.length; j++) {
-            const words = await scoreHitsToWords(dictHits[i].results[j].results);
+            const words = await jmdictIdsToWords(dictHits[i].results[j].results);
             for (let k = 0; k < words.length; k++) {
               dictHits[i].results[j].results[k].summary = displayWordLight(words[k], tags);
             }

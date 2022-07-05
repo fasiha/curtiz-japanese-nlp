@@ -753,13 +753,13 @@ function analyzeSentence(sentence, overrides = {}) {
     });
 }
 exports.analyzeSentence = analyzeSentence;
-function scoreHitsToWords(hits) {
+function jmdictIdsToWords(hits) {
     return __awaiter(this, void 0, void 0, function* () {
         const { db } = yield exports.jmdictPromise;
         return jmdict_simplified_node_1.idsToWords(db, hits.map(o => o.wordId));
     });
 }
-exports.scoreHitsToWords = scoreHitsToWords;
+exports.jmdictIdsToWords = jmdictIdsToWords;
 function getTags() {
     return __awaiter(this, void 0, void 0, function* () { return exports.jmdictPromise.then(({ db }) => jmdict_simplified_node_1.getTags(db)); });
 }
@@ -810,7 +810,7 @@ function linesToCurtizMarkdown(lines) {
                     for (const fromEnd of fromStart.results) {
                         ret.push(`  - Vocab: ${contextClozeOrStringToString(fromEnd.run)} INFO`);
                         const hits = fromEnd.results.slice(0, MAX_LINES);
-                        const words = yield scoreHitsToWords(hits);
+                        const words = yield jmdictIdsToWords(hits);
                         for (const [wi, w] of words.entries()) {
                             ret.push('    - ' + hits[wi].search + ' | ' + displayWordLight(w, tags));
                         }
@@ -861,7 +861,7 @@ function linesToFurigana(lines, buildDictionary = false) {
                     const dictHits = yield enumerateDictionaryHits(parsed.morphemes, false, 10);
                     for (let i = 0; i < dictHits.length; i++) {
                         for (let j = 0; j < dictHits[i].results.length; j++) {
-                            const words = yield scoreHitsToWords(dictHits[i].results[j].results);
+                            const words = yield jmdictIdsToWords(dictHits[i].results[j].results);
                             for (let k = 0; k < words.length; k++) {
                                 dictHits[i].results[j].results[k].summary = displayWordLight(words[k], tags);
                             }

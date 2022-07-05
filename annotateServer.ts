@@ -14,7 +14,7 @@ import {
   jmdictPromise,
   mecabJdepp,
   morphemesToFurigana,
-  scoreHitsToWords
+  jmdictIdsToWords
 } from './annotate';
 import {ScoreHits, v1ReqSentence, v1ReqSentences, v1ResSentence, SearchMapped, FillInTheBlanks} from './interfaces';
 import {invokeMecab, maybeMorphemesToMorphemes, parseMecab, Morpheme} from './mecabUnidic';
@@ -58,6 +58,15 @@ app.post('/api/v1/sentences', async (req, res) => {
   res.json(resBody);
 });
 
+app.get('/jmdict/:wordId', async (req, res) => {
+  const {wordId} = req.params;
+  if (wordId) {
+    res.json((await jmdictIdsToWords([{wordId}]))[0]);
+  } else {
+    res.status(400).json('missing id');
+  }
+})
+
 async function handleSentence(sentence: string, overrides: Record<string, Furigana[]>, includeWord: boolean,
                               extractParticlesConj: boolean): Promise<v1ResSentence> {
   if (!hasKanji(sentence) && !hasKana(sentence)) {
@@ -73,7 +82,7 @@ async function handleSentence(sentence: string, overrides: Record<string, Furiga
   const dictHits = await enumerateDictionaryHits(morphemes, true, 10);
   for (let i = 0; i < dictHits.length; i++) {
     for (let j = 0; j < dictHits[i].results.length; j++) {
-      const words = await scoreHitsToWords(dictHits[i].results[j].results);
+      const words = await jmdictIdsToWords(dictHits[i].results[j].results);
       for (let k = 0; k < words.length; k++) {
         dictHits[i].results[j].results[k].summary = displayWordLight(words[k], tags);
         if (includeWord) { dictHits[i].results[j].results[k].word = words[k]; }
