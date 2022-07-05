@@ -344,10 +344,24 @@ async function morphemesToConjPhrases(startIdx: number, goodBunsetsu: Morpheme[]
         verbNotAdj ? verbDeconjugate(cloze, dictionaryForm, ichidan) : adjDeconjugate(cloze, dictionaryForm, iAdj);
     if (deconj.length) { deconjs.push(...(deconj as Ugh<typeof deconj>)); }
   }
-  (ret.deconj as Ugh<typeof ret['deconj']>) = deconjs;
+  (ret.deconj as Ugh<typeof ret['deconj']>) = uniqueKey(deconjs, x => {
+    if ('auxiliaries' in x) { return x.auxiliaries.join('/') + x.conjugation + x.result.join('/') }
+    return x.conjugation + x.result.join('/');
+  });
   return ret;
 }
 type Ugh<T> = (T extends(infer X)[] ? X : never)[];
+function uniqueKey<T>(v: T[], key: (x: T) => string): T[] {
+  const ys = new Set();
+  const ret: T[] = [];
+  for (const x of v) {
+    const y = key(x);
+    if (ys.has(y)) { continue; }
+    ys.add(y);
+    ret.push(x);
+  }
+  return ret;
+}
 
 // Find clozes: particles and conjugated verb/adjective phrases
 export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = false): Promise<FillInTheBlanks> {

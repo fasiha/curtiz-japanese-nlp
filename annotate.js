@@ -300,9 +300,27 @@ function morphemesToConjPhrases(startIdx, goodBunsetsu, fullCloze, verbose = fal
                 deconjs.push(...deconj);
             }
         }
-        ret.deconj = deconjs;
+        ret.deconj = uniqueKey(deconjs, x => {
+            if ('auxiliaries' in x) {
+                return x.auxiliaries.join('/') + x.conjugation + x.result.join('/');
+            }
+            return x.conjugation + x.result.join('/');
+        });
         return ret;
     });
+}
+function uniqueKey(v, key) {
+    const ys = new Set();
+    const ret = [];
+    for (const x of v) {
+        const y = key(x);
+        if (ys.has(y)) {
+            continue;
+        }
+        ys.add(y);
+        ret.push(x);
+    }
+    return ret;
 }
 // Find clozes: particles and conjugated verb/adjective phrases
 function identifyFillInBlanks(bunsetsus, verbose = false) {
