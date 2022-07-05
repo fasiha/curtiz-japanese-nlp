@@ -326,10 +326,12 @@ function identifyFillInBlanks(bunsetsus) {
                 }
             }
             // We're not done with conjugated phrases yet. JDepP packs da/desu into the preceding bunsetsu,
-            // which prevents the deconjugator from finding them. It'll also do something similar for noun+suru
+            // which prevents the deconjugator from finding them. It'll also do something similar for noun+suru,
+            // or any verb really (それは昨日のことちゃった, JDepP makes `ことちゃった` as a bunsetsu)
             const copulaIdx = bunsetsu.findIndex(m => {
                 const [a = '', b = ''] = m.inflectionType || [];
-                return (a.startsWith('aux') && (b.startsWith('desu') || b.startsWith('da'))) || m.lemma === '為る';
+                return (a.startsWith('aux') && (b.startsWith('desu') || b.startsWith('da'))) || m.lemma === '為る' ||
+                    m.partOfSpeech[0].includes('verb');
             });
             if (copulaIdx > 0) {
                 // copula found with something to its left
