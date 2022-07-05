@@ -249,7 +249,7 @@ const bunsetsuToString = (morphemes) => morphemes.map(m => m.literal).join('');
 function betterMorphemePredicate(m) {
     return !(m.partOfSpeech[0] === 'supplementary_symbol') && !(m.partOfSpeech[0] === 'particle');
 }
-function morphemesToConjPhrases(startIdx, goodBunsetsu, fullCloze) {
+function morphemesToConjPhrases(startIdx, goodBunsetsu, fullCloze, verbose = false) {
     var _a;
     return __awaiter(this, void 0, void 0, function* () {
         const endIdx = startIdx + goodBunsetsu.length;
@@ -261,30 +261,51 @@ function morphemesToConjPhrases(startIdx, goodBunsetsu, fullCloze) {
             const entry = entries.find(e => e.reading === lemmaReading);
             return entry ? entry.furigana : o.lemma === lemmaReading ? [lemmaReading] : [{ ruby: o.lemma, rt: lemmaReading }];
         });
-        let dictionaryForm = goodBunsetsu[0].lemma.split('-')[0];
-        // sometimes the lemma is too helpful: "ワンダフル-wonderful", so split on dash
-        if (!curtiz_utils_1.hasKanji(cloze) && curtiz_utils_1.hasKanji(dictionaryForm)) {
-            // deconjugate won't find anything. Look at lemmas and try to kana-ify the dictionaryForm
-            for (const lemma of lemmas.flat()) {
-                if (typeof lemma === 'string') {
-                    continue;
-                }
-                const { ruby, rt } = lemma;
-                dictionaryForm = dictionaryForm.replace(ruby, rt);
-            }
-        }
+        const ret = { deconj: [], startIdx, endIdx, morphemes: goodBunsetsu, cloze: fullCloze, lemmas };
         const first = goodBunsetsu[0];
         const pos0 = first.partOfSpeech[0];
         const pos0Last = first.partOfSpeech[first.partOfSpeech.length - 1];
         const verbNotAdj = pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0Last === 'verbal_suru';
         const ichidan = (_a = first.inflectionType) === null || _a === void 0 ? void 0 : _a[0].includes('ichidan');
         const iAdj = pos0.endsWith('adjective_i');
-        const deconj = verbNotAdj ? kamiya_codec_1.verbDeconjugate(cloze, dictionaryForm, ichidan) : kamiya_codec_1.adjDeconjugate(cloze, dictionaryForm, iAdj);
-        return ({ deconj, startIdx, endIdx, morphemes: goodBunsetsu, cloze: fullCloze, lemmas });
+        const deconjs = [];
+        for (const mergeSuffixes of [true, false]) {
+            // sometimes the lemma is too helpful: "ワンダフル-wonderful", so split on dash
+            let dictionaryForm = goodBunsetsu[0].lemma.split('-')[0];
+            if (mergeSuffixes) {
+                const nonSuffixIdx = goodBunsetsu.findIndex((m, i) => i > 0 && m.partOfSpeech[0] !== 'suffix');
+                if (nonSuffixIdx >= 1) {
+                    dictionaryForm += goodBunsetsu.slice(1, nonSuffixIdx).map(m => m.lemma.split('-')[0]).join('');
+                }
+            }
+            // Often the literal cloze will have fewer kanji than the lemma
+            if (cloze.split('').filter(curtiz_utils_1.hasKanji).length !== dictionaryForm.split('').filter(curtiz_utils_1.hasKanji).length) {
+                // deconjugate won't find anything. Look at lemmas and try to kana-ify the dictionaryForm
+                for (const lemma of lemmas.flat()) {
+                    if (typeof lemma === 'string') {
+                        continue;
+                    }
+                    const { ruby, rt } = lemma;
+                    // Replace the kanji in the dictionary form if it's not in the literal cloze
+                    if (!cloze.includes(ruby)) {
+                        dictionaryForm = dictionaryForm.replace(ruby, rt);
+                    }
+                }
+            }
+            if (verbose) {
+                console.log('? ', { verbNotAdj, ichidan, iAdj, dictionaryForm, cloze });
+            }
+            const deconj = verbNotAdj ? kamiya_codec_1.verbDeconjugate(cloze, dictionaryForm, ichidan) : kamiya_codec_1.adjDeconjugate(cloze, dictionaryForm, iAdj);
+            if (deconj.length) {
+                deconjs.push(...deconj);
+            }
+        }
+        ret.deconj = deconjs;
+        return ret;
     });
 }
 // Find clozes: particles and conjugated verb/adjective phrases
-function identifyFillInBlanks(bunsetsus) {
+function identifyFillInBlanks(bunsetsus, verbose = false) {
     var _a;
     return __awaiter(this, void 0, void 0, function* () {
         const sentence = bunsetsus.map(bunsetsuToString).join('');
@@ -305,6 +326,9 @@ function identifyFillInBlanks(bunsetsus) {
             // So we loop over those bad morphemes just in case the deconjugator finds something.
             for (let questionableIdx = 0; questionableIdx <= ignoreRight.length; ++questionableIdx) {
                 const goodBunsetsu = bunsetsu.slice(0, bunsetsu.length - ignoreRight.length + questionableIdx);
+                if (verbose) {
+                    console.log('g', goodBunsetsu.map(o => o.literal).join(' '));
+                }
                 const pos0 = first.partOfSpeech[0];
                 const pos0Last = first.partOfSpeech[first.partOfSpeech.length - 1];
                 /*
@@ -319,6 +343,9 @@ function identifyFillInBlanks(bunsetsus) {
                     const right = sentence.slice(left.length + middle.length);
                     const cloze = generateContextClozed(left, middle, right);
                     const res = yield morphemesToConjPhrases(startIdx, goodBunsetsu, cloze);
+                    if (verbose) {
+                        console.log('^ found', res.deconj);
+                    }
                     if (res.deconj.length === 0 && questionableIdx > 0) {
                         continue;
                     }
@@ -338,6 +365,9 @@ function identifyFillInBlanks(bunsetsus) {
                 const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(bunsetsu.slice(0, copulaIdx));
                 for (let questionableIdx = copulaIdx + 1; questionableIdx <= bunsetsu.length; ++questionableIdx) {
                     const goodBunsetsu = bunsetsu.slice(copulaIdx, questionableIdx);
+                    if (verbose) {
+                        console.log('g2', goodBunsetsu.map(o => o.literal).join(' '));
+                    }
                     const middle = bunsetsuToString(goodBunsetsu);
                     const right = sentence.slice(left.length + middle.length);
                     const cloze = generateContextClozed(left, middle, right);
@@ -913,16 +943,14 @@ cat inputfile | annotate MODE
     }
     (() => __awaiter(void 0, void 0, void 0, function* () {
         {
-            for (const line of [' ブラックシャドー団は集団で盗みを行う窃盗団でお金持ちの家を狙い、家にある物全て根こそぎ盗んでいきます。',
+            for (const line of ['長は得意げな顔',
             ]) {
                 console.log('\n===\n');
                 const x = yield analyzeSentence(line);
-                // console.log('conj')
-                // p(x.particlesConjphrases.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')))
-                // console.log('deconj')
-                // console.dir(x.particlesConjphrases.conjugatedPhrases.map(
-                //                 o => (o.deconj as (AdjDeconjugated | Deconjugated)[]).map(m => renderDeconjugation(m))),
-                //             {depth: null})
+                console.log('conj');
+                p(x.particlesConjphrases.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')));
+                console.log('deconj');
+                console.dir(x.particlesConjphrases.conjugatedPhrases.map(o => o.deconj.map(m => renderDeconjugation(m))), { depth: null });
                 // console.log('particles')
                 // console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]))
                 // p(x.particlesConjphrases.particles.map(o => o.chino))
