@@ -421,7 +421,7 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
         const middle = bunsetsuToString(goodBunsetsu);
         const right = sentence.slice(left.length + middle.length);
         const cloze = generateContextClozed(left, middle, right);
-        const res = await morphemesToConjPhrases(startIdx, goodBunsetsu, cloze)
+        const res = await morphemesToConjPhrases(startIdx + copulaIdx, goodBunsetsu, cloze)
         if (res.deconj.length) { conjugatedPhrases.push(res); }
       }
     }

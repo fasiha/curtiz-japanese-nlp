@@ -389,7 +389,7 @@ function identifyFillInBlanks(bunsetsus, verbose = false) {
                     const middle = bunsetsuToString(goodBunsetsu);
                     const right = sentence.slice(left.length + middle.length);
                     const cloze = generateContextClozed(left, middle, right);
-                    const res = yield morphemesToConjPhrases(startIdx, goodBunsetsu, cloze);
+                    const res = yield morphemesToConjPhrases(startIdx + copulaIdx, goodBunsetsu, cloze);
                     if (res.deconj.length) {
                         conjugatedPhrases.push(res);
                     }
