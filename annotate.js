@@ -322,6 +322,13 @@ function uniqueKey(v, key) {
     }
     return ret;
 }
+function* allSlices(v) {
+    for (let start = 0; start < v.length; start++) {
+        for (let end = start + 1; end < v.length + 1; end++) {
+            yield { start, end, slice: v.slice(start, end) };
+        }
+    }
+}
 // Find clozes: particles and conjugated verb/adjective phrases
 function identifyFillInBlanks(bunsetsus, verbose = false) {
     var _a;
@@ -329,67 +336,38 @@ function identifyFillInBlanks(bunsetsus, verbose = false) {
         const sentence = bunsetsus.map(bunsetsuToString).join('');
         const conjugatedPhrases = [];
         const particles = [];
-        for (const [bidx, bunsetsu] of bunsetsus.entries()) {
+        for (const [bidx, fullBunsetsu] of bunsetsus.entries()) {
             const startIdx = bunsetsus.slice(0, bidx).map(o => o.length).reduce((p, c) => p + c, 0);
-            // sometimes the first morpheme might be ご・お "prefix".
-            const first = bunsetsu[0];
-            if (!first) {
+            if (!fullBunsetsu[0]) {
                 continue;
             }
-            const firstQuestionableIdx = bunsetsu.findIndex(m => !betterMorphemePredicate(m));
-            const ignoreRight = firstQuestionableIdx === -1 ? [] : bunsetsu.slice(firstQuestionableIdx);
-            const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('');
-            // we usually want to strip bad morphemes on the right (`ignoreRight`) but sometimes we don't do a good job, e.g.,
-            // MeCab thinks 急いで's で is a particle and we would ignore it, even though it's part of the Vte form.
-            // So we loop over those bad morphemes just in case the deconjugator finds something.
-            for (let questionableIdx = 0; questionableIdx <= ignoreRight.length; ++questionableIdx) {
-                const goodBunsetsu = bunsetsu.slice(0, bunsetsu.length - ignoreRight.length + questionableIdx);
+            for (const { start, slice: sliceBunsetsu } of allSlices(fullBunsetsu)) {
+                const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(fullBunsetsu.slice(0, start));
+                const first = sliceBunsetsu[0];
                 if (verbose) {
-                    console.log('g', goodBunsetsu.map(o => o.literal).join(' '));
+                    console.log('g', sliceBunsetsu.map(o => o.literal).join(' '));
                 }
-                const pos0 = first.partOfSpeech[0];
-                const pos0Last = first.partOfSpeech[first.partOfSpeech.length - 1];
+                const pos0 = first.partOfSpeech[0] || '';
+                const pos1 = first.partOfSpeech[1] || '';
+                const pos0Last = first.partOfSpeech[first.partOfSpeech.length - 1] || '';
                 /*
                 If a bunsetsu has >1 morphemes, check if it's a verb or an adjective (i or na).
                 If it's just one, make sure it's an adjective that's not a conclusive (catches 朝早く)
+                Also check for copulas (da/desu).
                 */
-                if ((goodBunsetsu.length === 1 && pos0.startsWith('adjectiv') &&
+                if ((sliceBunsetsu.length === 1 && pos0.startsWith('adjectiv') &&
                     (((_a = first.inflection) === null || _a === void 0 ? void 0 : _a[0]) ? !first.inflection[0].endsWith('conclusive') : true)) ||
-                    (goodBunsetsu.length > 0 && (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject') ||
-                        pos0Last === 'verbal_suru' || pos0Last.startsWith('adjectival')))) {
-                    const middle = bunsetsuToString(goodBunsetsu);
+                    (sliceBunsetsu.length > 0 &&
+                        (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject') ||
+                            pos0Last === 'verbal_suru' || pos0Last.startsWith('adjectival'))) ||
+                    ((pos0.startsWith('aux') && (pos1.startsWith('desu') || pos1.startsWith('da'))))) {
+                    const middle = bunsetsuToString(sliceBunsetsu);
                     const right = sentence.slice(left.length + middle.length);
                     const cloze = generateContextClozed(left, middle, right);
-                    const res = yield morphemesToConjPhrases(startIdx, goodBunsetsu, cloze);
+                    const res = yield morphemesToConjPhrases(startIdx + start, sliceBunsetsu, cloze);
                     if (verbose) {
                         console.log('^ found', res.deconj);
                     }
-                    if (res.deconj.length === 0 && questionableIdx > 0) {
-                        continue;
-                    }
-                    conjugatedPhrases.push(res);
-                }
-            }
-            // We're not done with conjugated phrases yet. JDepP packs da/desu into the preceding bunsetsu,
-            // which prevents the deconjugator from finding them. It'll also do something similar for noun+suru,
-            // or any verb really (それは昨日のことちゃった, JDepP makes `ことちゃった` as a bunsetsu)
-            const copulaIdx = bunsetsu.findIndex(m => {
-                const [a = '', b = ''] = m.inflectionType || [];
-                return (a.startsWith('aux') && (b.startsWith('desu') || b.startsWith('da'))) || m.lemma === '為る' ||
-                    m.partOfSpeech[0].includes('verb');
-            });
-            if (copulaIdx > 0) {
-                // copula found with something to its left
-                const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(bunsetsu.slice(0, copulaIdx));
-                for (let questionableIdx = copulaIdx + 1; questionableIdx <= bunsetsu.length; ++questionableIdx) {
-                    const goodBunsetsu = bunsetsu.slice(copulaIdx, questionableIdx);
-                    if (verbose) {
-                        console.log('g2', goodBunsetsu.map(o => o.literal).join(' '));
-                    }
-                    const middle = bunsetsuToString(goodBunsetsu);
-                    const right = sentence.slice(left.length + middle.length);
-                    const cloze = generateContextClozed(left, middle, right);
-                    const res = yield morphemesToConjPhrases(startIdx + copulaIdx, goodBunsetsu, cloze);
                     if (res.deconj.length) {
                         conjugatedPhrases.push(res);
                     }
@@ -397,12 +375,12 @@ function identifyFillInBlanks(bunsetsus, verbose = false) {
             }
             // Handle particles: identify and look up in Chino's "All About Particles" list
             const particlePredicate = (p) => p.partOfSpeech[0].startsWith('particle') && p.partOfSpeech.length > 1;
-            for (const [pidx, particle] of bunsetsu.entries()) {
+            for (const [pidx, particle] of fullBunsetsu.entries()) {
                 if (particlePredicate(particle)) {
                     const startIdxParticle = startIdx + pidx;
                     const endIdx = startIdxParticle + 1;
-                    const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(bunsetsu.slice(0, pidx));
-                    const right = bunsetsuToString(bunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
+                    const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(fullBunsetsu.slice(0, pidx));
+                    const right = bunsetsuToString(fullBunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
                     const cloze = generateContextClozed(left, particle.literal, right);
                     const chino = chino_particles_1.lookup(cloze.cloze);
                     if (particle.literal !== particle.lemma) {
