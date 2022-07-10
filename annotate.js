@@ -939,7 +939,7 @@ cat inputfile | annotate MODE
     }
     (() => __awaiter(void 0, void 0, void 0, function* () {
         {
-            for (const line of ['長は得意げな顔',
+            for (const line of ['知ってることを秘密にある',
             ]) {
                 console.log('\n===\n');
                 const x = yield analyzeSentence(line);
