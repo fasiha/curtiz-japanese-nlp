@@ -342,7 +342,28 @@ async function morphemesToConjPhrases(startIdx: number, goodBunsetsu: Morpheme[]
     if (verbose) { console.log('? ', {verbNotAdj, ichidan, iAdj, dictionaryForm, cloze}) }
     const deconj =
         verbNotAdj ? verbDeconjugate(cloze, dictionaryForm, ichidan) : adjDeconjugate(cloze, dictionaryForm, iAdj);
-    if (deconj.length) { deconjs.push(...(deconj as Ugh<typeof deconj>)); }
+    if (deconj.length) {
+      deconjs.push(...(deconj as Ugh<typeof deconj>));
+    } else {
+      // sometimes, the lemma has a totally different kanji: 刺される has lemma "差す-他動詞" lol.
+      // in these situations, try replacing kanji from the cloze into the dictionary form.
+      const clozeKanji = cloze.split('').filter(hasKanji);
+      const dictKanji = dictionaryForm.split('').filter(hasKanji);
+      if (clozeKanji.length === dictKanji.length) {
+        // This is a very stupid way to do it but works for 刺される: replace kanji one at a time...
+        for (const [idx, clozeK] of clozeKanji.entries()) {
+          const dictK = dictKanji[idx];
+          const newDictionaryForm = dictionaryForm.replace(dictK, clozeK);
+          const deconj = verbNotAdj ? verbDeconjugate(cloze, newDictionaryForm, ichidan)
+                                    : adjDeconjugate(cloze, newDictionaryForm, iAdj);
+          if (deconj.length) {
+            deconjs.push(...(deconj as Ugh<typeof deconj>));
+            break;
+            // if we find something, pray it's good and bail.
+          }
+        }
+      }
+    }
   }
   (ret.deconj as Ugh<typeof ret['deconj']>) = uniqueKey(deconjs, x => {
     if ('auxiliaries' in x) { return x.auxiliaries.join('/') + x.conjugation + x.result.join('/') }

@@ -299,6 +299,26 @@ function morphemesToConjPhrases(startIdx, goodBunsetsu, fullCloze, verbose = fal
             if (deconj.length) {
                 deconjs.push(...deconj);
             }
+            else {
+                // sometimes, the lemma has a totally different kanji: 刺される has lemma "差す-他動詞" lol.
+                // in these situations, try replacing kanji from the cloze into the dictionary form.
+                const clozeKanji = cloze.split('').filter(curtiz_utils_1.hasKanji);
+                const dictKanji = dictionaryForm.split('').filter(curtiz_utils_1.hasKanji);
+                if (clozeKanji.length === dictKanji.length) {
+                    // This is a very stupid way to do it but works for 刺される: replace kanji one at a time...
+                    for (const [idx, clozeK] of clozeKanji.entries()) {
+                        const dictK = dictKanji[idx];
+                        const newDictionaryForm = dictionaryForm.replace(dictK, clozeK);
+                        const deconj = verbNotAdj ? kamiya_codec_1.verbDeconjugate(cloze, newDictionaryForm, ichidan)
+                            : kamiya_codec_1.adjDeconjugate(cloze, newDictionaryForm, iAdj);
+                        if (deconj.length) {
+                            deconjs.push(...deconj);
+                            break;
+                            // if we find something, pray it's good and bail.
+                        }
+                    }
+                }
+            }
         }
         ret.deconj = uniqueKey(deconjs, x => {
             if ('auxiliaries' in x) {
