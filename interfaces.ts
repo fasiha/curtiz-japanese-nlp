@@ -7,8 +7,8 @@ import {Bunsetsu} from './jdepp';
 import {SimpleCharacter} from './kanjidic';
 import {Morpheme} from './mecabUnidic';
 
-export {Furigana, Ruby} from "jmdict-furigana-node";
-export {
+export type{Furigana, Ruby} from "jmdict-furigana-node";
+export type{
   Gloss,
   Kana,
   Kanji,
@@ -17,7 +17,7 @@ export {
   Word,
   Xref,
 } from "jmdict-simplified-node/interfaces";
-export {Morpheme} from './mecabUnidic';
+export type{Morpheme} from './mecabUnidic';
 
 export interface ScoreHit {
   wordId: Word['id'];
