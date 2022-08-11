@@ -8,12 +8,17 @@ const idxChinoParticles: [number, string[]][] =
 export function lookup(raw: string) {
   const ret: typeof idxChinoParticles = [];
   if (raw.length === 0) { return ret; }
+
+  const rawAlternative = raw === 'ん' ? 'の' : '';
   for (const [idx, list] of idxChinoParticles) {
-    if (list.some(chino => chino.includes(raw))) { ret.push([idx, list]); }
+    if (list.some(chino => chino.includes(raw) || (rawAlternative && chino.includes(rawAlternative)))) {
+      ret.push([idx, list]);
+    }
   }
 
   const scoreMatch = ([_, v]: typeof idxChinoParticles[0]) => {
-    const hits = v.filter(s => s.includes(raw)).map(s => Math.abs(s.length - raw.length));
+    const hits = v.filter(s => s.includes(raw) || (rawAlternative && s.includes(rawAlternative)))
+                     .map(s => Math.abs(s.length - raw.length));
     return [Math.min(...hits), hits.length, v.length];
     // Exact matches come first (minimize superfluous characters).
     // Then total number of matches
