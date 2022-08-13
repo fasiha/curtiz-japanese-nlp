@@ -88,7 +88,7 @@ function enumerateDictionaryHits(plainMorphemes, full = true, limit = -1) {
                         continue;
                     }
                 }
-                let scored = [];
+                const scored = [];
                 function helperSearchesHitsToScored(searches, subhits, searchKey) {
                     return curtiz_utils_1.flatten(subhits.map((v, i) => v.map(w => {
                         // help catch issues with automatic type widening and excess property checks
@@ -106,7 +106,7 @@ function enumerateDictionaryHits(plainMorphemes, full = true, limit = -1) {
                     // Consider searching rendaku above for non-initial morphemes? It'd be nice if "猿ちえお" (saru chi e o) found
                     // "猿知恵" (さるぢえ・さるじえ)
                     const readingSubhits = yield Promise.all(readingSearches.map(search => jmdict_simplified_node_1.readingBeginning(db, search, DICTIONARY_LIMIT)));
-                    scored = helperSearchesHitsToScored(readingSearches, readingSubhits, 'kana');
+                    scored.push(...helperSearchesHitsToScored(readingSearches, readingSubhits, 'kana'));
                 }
                 // Search literals if needed, this works around MeCab mis-readings like お父さん->おちちさん
                 {
@@ -116,6 +116,34 @@ function enumerateDictionaryHits(plainMorphemes, full = true, limit = -1) {
                 }
                 scored.sort((a, b) => b.score - a.score);
                 if (scored.length > 0) {
+                    results.push({ endIdx, run: runLiteral, results: curtiz_utils_1.dedupeLimit(scored, o => o.wordId, limit) });
+                }
+            }
+            if (results.length === 0) {
+                // we didn't find ANYTHING for this morpheme? Try character by character
+                const m = morphemes[startIdx];
+                const scored = [];
+                for (const [searches, searchFn, key] of [[m.searchReading, jmdict_simplified_node_1.readingBeginning, 'kana'],
+                    [m.searchKanji, jmdict_simplified_node_1.kanjiBeginning, 'kanji'],
+                ]) {
+                    for (const search of searches) {
+                        const all = Array.from(curtiz_utils_1.allSubstrings(search));
+                        const subhits = yield Promise.all(all.map(search => searchFn(db, search, DICTIONARY_LIMIT)));
+                        for (const [idx, hits] of subhits.entries()) {
+                            const search = all[idx];
+                            for (const w of hits) {
+                                const score = scoreMorphemeWord([m], search, key, w);
+                                scored.push({ wordId: w.id, score, search });
+                            }
+                        }
+                    }
+                }
+                if (scored.length > 0) {
+                    scored.sort((a, b) => b.score - a.score);
+                    const endIdx = startIdx + 1;
+                    const run = morphemes.slice(startIdx, endIdx);
+                    const runLiteralCore = bunsetsuToString(run);
+                    const runLiteral = simplify(generateContextClozed(bunsetsuToString(morphemes.slice(0, startIdx)), runLiteralCore, bunsetsuToString(morphemes.slice(endIdx))));
                     results.push({ endIdx, run: runLiteral, results: curtiz_utils_1.dedupeLimit(scored, o => o.wordId, limit) });
                 }
             }
@@ -961,7 +989,7 @@ cat inputfile | annotate MODE
     }
     (() => __awaiter(void 0, void 0, void 0, function* () {
         {
-            for (const line of ['知ってることを秘密にある',
+            for (const line of ['トカゲの尻尾切り',
             ]) {
                 console.log('\n===\n');
                 const x = yield analyzeSentence(line);
@@ -972,6 +1000,24 @@ cat inputfile | annotate MODE
                 // console.log('particles')
                 // console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]))
                 // p(x.particlesConjphrases.particles.map(o => o.chino))
+                if (false) {
+                    const MAX_LINES = 10000;
+                    const { db } = yield exports.jmdictPromise;
+                    const tags = JSON.parse(yield jmdict_simplified_node_1.getField(db, 'tags'));
+                    for (const fromStart of x.dictionaryHits) {
+                        for (const fromEnd of fromStart.results) {
+                            console.log(`  - Vocab: ${contextClozeOrStringToString(fromEnd.run)} INFO`);
+                            const hits = fromEnd.results.slice(0, MAX_LINES);
+                            const words = yield jmdictIdsToWords(hits);
+                            for (const [wi, w] of words.entries()) {
+                                console.log('    - ' + hits[wi].search + ' | ' + displayWordLight(w, tags));
+                            }
+                            if (fromEnd.results.length > MAX_LINES) {
+                                console.log(`    - (… ${fromEnd.results.length - MAX_LINES} omitted) INFO`);
+                            }
+                        }
+                    }
+                }
             }
             if (Math.random() > -1) {
                 return;

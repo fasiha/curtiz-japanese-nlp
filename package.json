@@ -40,7 +40,7 @@
   "dependencies": {
     "body-parser": "^1.19.0",
     "cors": "^2.8.5",
-    "curtiz-utils": "git+https://github.com/fasiha/curtiz-utils.git",
+    "curtiz-utils": "github:fasiha/curtiz-utils",
     "dotenv": "^8.2.0",
     "eastasianwidth": "^0.2.0",
     "express": "^4.17.1",

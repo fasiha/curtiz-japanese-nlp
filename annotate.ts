@@ -1,5 +1,15 @@
 import {createHash} from 'crypto';
-import {dedupeLimit, filterRight, flatmap, flatten, hasHiragana, hasKana, hasKanji, kata2hira} from 'curtiz-utils'
+import {
+  allSubstrings,
+  dedupeLimit,
+  filterRight,
+  flatmap,
+  flatten,
+  hasHiragana,
+  hasKana,
+  hasKanji,
+  kata2hira
+} from 'curtiz-utils'
 import {promises as pfs} from 'fs';
 import {
   Entry,
@@ -128,7 +138,7 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
         // skip particles like は and も if they're by themselves as an optimization
         if (runLiteralCore.length === 1 && hasKana(runLiteralCore[0]) && runLiteralCore === run[0].lemma) { continue; }
       }
-      let scored: ScoreHit[] = [];
+      const scored: ScoreHit[] = [];
 
       function helperSearchesHitsToScored(searches: string[], subhits: Word[][],
                                           searchKey: "kana"|"kanji"): ScoreHit[] {
@@ -152,7 +162,7 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
 
         const readingSubhits =
             await Promise.all(readingSearches.map(search => readingBeginning(db, search, DICTIONARY_LIMIT)));
-        scored = helperSearchesHitsToScored(readingSearches, readingSubhits, 'kana');
+        scored.push(...helperSearchesHitsToScored(readingSearches, readingSubhits, 'kana'));
       }
       // Search literals if needed, this works around MeCab mis-readings like お父さん->おちちさん
       {
@@ -164,6 +174,41 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
 
       scored.sort((a, b) => b.score - a.score);
       if (scored.length > 0) {
+        results.push({endIdx, run: runLiteral, results: dedupeLimit(scored, o => o.wordId, limit)});
+      }
+    }
+
+    if (results.length === 0) {
+      // we didn't find ANYTHING for this morpheme? Try character by character
+      const m = morphemes[startIdx];
+
+      const scored: ScoreHit[] = [];
+
+      for (const [searches, searchFn, key] of [[m.searchReading, readingBeginning, 'kana'],
+                                               [m.searchKanji, kanjiBeginning, 'kanji'],
+      ] as const) {
+        for (const search of searches) {
+          const all = Array.from(allSubstrings(search));
+          const subhits = await Promise.all(all.map(search => searchFn(db, search, DICTIONARY_LIMIT)));
+          for (const [idx, hits] of subhits.entries()) {
+            const search = all[idx];
+            for (const w of hits) {
+              const score = scoreMorphemeWord([m], search, key, w)
+              scored.push({wordId: w.id, score, search});
+            }
+          }
+        }
+      }
+
+      if (scored.length > 0) {
+        scored.sort((a, b) => b.score - a.score);
+        const endIdx = startIdx + 1;
+
+        const run = morphemes.slice(startIdx, endIdx);
+        const runLiteralCore = bunsetsuToString(run);
+        const runLiteral = simplify(generateContextClozed(bunsetsuToString(morphemes.slice(0, startIdx)),
+                                                          runLiteralCore, bunsetsuToString(morphemes.slice(endIdx))));
+
         results.push({endIdx, run: runLiteral, results: dedupeLimit(scored, o => o.wordId, limit)});
       }
     }
@@ -982,7 +1027,7 @@ cat inputfile | annotate MODE
     {
       for (
           const line of
-              ['知ってることを秘密にある',
+              ['トカゲの尻尾切り',
                // ブラックシャドー団は集団で盗みを行う窃盗団でお金持ちの家を狙い、家にある物全て根こそぎ盗んでいきます。',
                // 'お待ちしておりました',
                // '買ったんだ',
@@ -1005,6 +1050,25 @@ cat inputfile | annotate MODE
         // console.log('particles')
         // console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]))
         // p(x.particlesConjphrases.particles.map(o => o.chino))
+        if (false) {
+          const MAX_LINES = 10000;
+          const {db} = await jmdictPromise;
+          const tags: Record<string, string> = JSON.parse(await getField(db, 'tags'));
+
+          for (const fromStart of x.dictionaryHits) {
+            for (const fromEnd of fromStart.results) {
+              console.log(`  - Vocab: ${contextClozeOrStringToString(fromEnd.run)} INFO`);
+              const hits = fromEnd.results.slice(0, MAX_LINES);
+              const words = await jmdictIdsToWords(hits);
+              for (const [wi, w] of words.entries()) {
+                console.log('    - ' + hits[wi].search + ' | ' + displayWordLight(w, tags));
+              }
+              if (fromEnd.results.length > MAX_LINES) {
+                console.log(`    - (… ${fromEnd.results.length - MAX_LINES} omitted) INFO`);
+              }
+            }
+          }
+        }
       }
       if (Math.random() > -1) { return };
     }
