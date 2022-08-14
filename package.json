@@ -6,11 +6,9 @@
   "version": "3.0.0",
   "description": "Annotate Curtiz2 Markdown files with Japanese natural language parsing",
   "main": "annotateServer.js",
-  "bin": {
-    "curtiz-japanese-nlp-mecabunidic": "./mecabUnidic.js"
-  },
   "typings": "annotate.ts",
   "scripts": {
+    "curtiz-japanese-nlp-mecabunidic": "./mecabUnidic.js",
     "test": "tape tests/test*.js",
     "build": "tsc -p .",
     "start": "node annotateServer.js"
