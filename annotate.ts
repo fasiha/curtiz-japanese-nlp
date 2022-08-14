@@ -1,24 +1,7 @@
 import {createHash} from 'crypto';
-import {
-  allSubstrings,
-  dedupeLimit,
-  filterRight,
-  flatmap,
-  flatten,
-  hasHiragana,
-  hasKana,
-  hasKanji,
-  kata2hira
-} from 'curtiz-utils'
-import {promises as pfs} from 'fs';
-import {
-  Entry,
-  Furigana,
-  furiganaToString,
-  JmdictFurigana,
-  Ruby,
-  setup as setupJmdictFurigana
-} from 'jmdict-furigana-node';
+import {allSubstrings, dedupeLimit, flatten, hasHiragana, hasKana, hasKanji, kata2hira} from 'curtiz-utils'
+import {promises as pfs, readFileSync} from 'fs';
+import {Entry, Furigana, JmdictFurigana, Ruby, setup as setupJmdictFurigana} from 'jmdict-furigana-node';
 import {
   getField,
   getTags as getTagsDb,
@@ -36,23 +19,18 @@ import mkdirp from 'mkdirp';
 
 import {lookup} from './chino-particles';
 import {
-  AnalysisResult,
   ConjugatedPhrase,
   ContextCloze,
   FillInTheBlanks,
   Particle,
   ScoreHit,
-  ScoreHits
+  ScoreHits,
+  SearchMapped,
+  v1ResSentence
 } from './interfaces';
 import {addJdepp, Bunsetsu} from './jdepp';
-import {
-  goodMorphemePredicate,
-  invokeMecab,
-  maybeMorphemesToMorphemes,
-  Morpheme,
-  parse,
-  parseMecab
-} from './mecabUnidic';
+import {setupSimple as kanjidicSetup, SimpleCharacter} from './kanjidic';
+import {invokeMecab, maybeMorphemesToMorphemes, Morpheme, parseMecab} from './mecabUnidic';
 
 export {
   Entry,
@@ -854,20 +832,6 @@ function checkFurigana(sentence: string, furigana: Furigana[][]): Furigana[][] {
 }
 function toruby(f: Furigana) { return typeof f === 'string' ? f : f.ruby; }
 
-export async function analyzeSentence(sentence: string,
-                                      overrides: Partial<Record<string, Furigana[]>> = {}): Promise<AnalysisResult> {
-  const parsed = await mecabJdepp(sentence);
-
-  // Promises
-  const furiganaP = hasKanji(sentence) ? morphemesToFurigana(sentence, parsed.morphemes, overrides) : undefined;
-  const particlesConjphrasesP = identifyFillInBlanks(parsed.bunsetsus.map(o => o.morphemes));
-  const dictionaryHitsP = enumerateDictionaryHits(parsed.morphemes);
-
-  let [furigana, particlesConjphrases, dictionaryHits] =
-      await Promise.all([furiganaP, particlesConjphrasesP, dictionaryHitsP]);
-  return {furigana, particlesConjphrases, dictionaryHits};
-}
-
 export async function jmdictIdsToWords(hits: {wordId: string}[]) {
   const {db} = await jmdictPromise;
   return idsToWords(db, hits.map(o => o.wordId));
@@ -875,235 +839,132 @@ export async function jmdictIdsToWords(hits: {wordId: string}[]) {
 
 export async function getTags() { return jmdictPromise.then(({db}) => getTagsDb(db)) }
 
-export function contextClozeToString(c: ContextCloze): string {
+function contextClozeToString(c: ContextCloze): string {
   return (c.left || c.right) ? `${c.left}[${c.cloze}]${c.right}` : c.cloze;
 }
-export function contextClozeOrStringToString(c: ContextCloze|string): string {
+function contextClozeOrStringToString(c: ContextCloze|string): string {
   return typeof c === 'string' ? c : contextClozeToString(c);
 }
 
-export async function linesToCurtizMarkdown(lines: string[]) {
-  const ret: string[] = [];
+const tagsPromise = jmdictPromise.then(({db}) => db)
+                        .then(db => getField(db, 'tags'))
+                        .then(raw => JSON.parse(raw) as Record<string, string>);
 
-  const {db} = await jmdictPromise;
-  const tags: Record<string, string> = JSON.parse(await getField(db, 'tags'));
+const kanjidicPromise = kanjidicSetup();
 
-  const MAX_LINES = 8;
-  const overrides: Record<string, Furigana[]> = {};
-  const startRegexp = /^-\s+@\s+/;
-  for (const line of lines) {
-    if (!startRegexp.test(line)) {
-      ret.push(line);
-      continue;
-    }
-    const sentence = line.slice(line.match(startRegexp)?.[0].length);
-    const results = await analyzeSentence(sentence, overrides);
-    ret.push(results.furigana ? '- @ ' + results.furigana.map(furiganaToRuby).join('') : line);
+const wanikaniGraph: {[k: string]: string[]}&{metadata: Record<string, string>} =
+    JSON.parse(readFileSync('wanikani-kanji-graph.json', 'utf8'));
 
-    {
-      if (results.particlesConjphrases.particles.length) {
-        ret.push('  - Particles');
-        for (const {cloze} of results.particlesConjphrases.particles) {
-          ret.push(
-              `    - ${cloze.left}${cloze.left || cloze.right ? '[' + cloze.cloze + ']' : cloze.cloze}${cloze.right}`);
-        }
-      }
-      if (results.particlesConjphrases.conjugatedPhrases.length) {
-        ret.push('  - Conjugated phrases');
-        for (const c of results.particlesConjphrases.conjugatedPhrases) {
-          const cloze = c.cloze;
-          ret.push(`    - ${contextClozeToString(cloze)} | ${c.lemmas.map(furiganaToRuby).join(' + ')}`);
-        }
-      }
-    }
-    {
-      ret.push('  - Vocab');
-      for (const fromStart of results.dictionaryHits) {
-        for (const fromEnd of fromStart.results) {
-          ret.push(`  - Vocab: ${contextClozeOrStringToString(fromEnd.run)} INFO`);
-          const hits = fromEnd.results.slice(0, MAX_LINES);
-          const words = await jmdictIdsToWords(hits);
-          for (const [wi, w] of words.entries()) {
-            ret.push('    - ' + hits[wi].search + ' | ' + displayWordLight(w, tags));
-          }
-          if (fromEnd.results.length > MAX_LINES) {
-            ret.push(`    - (… ${fromEnd.results.length - MAX_LINES} omitted) INFO`);
-          }
-        }
+export async function handleSentence(sentence: string, overrides: Record<string, Furigana[]> = {}, includeWord = true,
+                                     extractParticlesConj = true): Promise<v1ResSentence> {
+  if (!hasKanji(sentence) && !hasKana(sentence)) {
+    const resBody: v1ResSentence = sentence;
+    return resBody;
+  }
+
+  const res = await mecabJdepp(sentence)
+  const morphemes: Morpheme[] = res.morphemes;
+  const bunsetsus: Bunsetsu<Morpheme>[] = res.bunsetsus;
+  const furigana = await morphemesToFurigana(sentence, morphemes, overrides);
+  const tags = await tagsPromise;
+  const dictHits = await enumerateDictionaryHits(morphemes, true, 10);
+  for (let i = 0; i < dictHits.length; i++) {
+    for (let j = 0; j < dictHits[i].results.length; j++) {
+      const words = await jmdictIdsToWords(dictHits[i].results[j].results);
+      for (let k = 0; k < words.length; k++) {
+        dictHits[i].results[j].results[k].summary = displayWordLight(words[k], tags);
+        if (includeWord) { dictHits[i].results[j].results[k].word = words[k]; }
       }
     }
   }
-  return ret;
+
+  const kanjidic = await kanjidicPromise;
+  const kanjidicHits =
+      Object.fromEntries(sentence.split('')
+                             .filter(c => c in kanjidic)
+                             .map(c => [c, {
+                                    ...kanjidic[c],
+                                    dependencies: searchMap(treeSearch(wanikaniGraph, c),
+                                                            c => (kanjidic[c] || null) as SimpleCharacter | null)
+                                                      .children
+                                  }]));
+
+  let clozes: undefined|FillInTheBlanks = undefined;
+  if (extractParticlesConj) { clozes = await identifyFillInBlanks(bunsetsus.map(o => o.morphemes)); }
+  const resBody: v1ResSentence =
+      {furigana, hits: dictHits, kanjidic: kanjidicHits, clozes, tags: includeWord ? tags : undefined, bunsetsus};
+  return resBody;
 }
 
-// RFC 4648 §5: base64url
-function base64_to_base64url(base64: string) {
-  return base64.replace(/\//g, '_').replace(/\+/g, '-').replace(/=+$/g, '');
+type Tree = Record<string, string[]>;
+type Search = {
+  node: string,
+  children: Search[]
+};
+function treeSearch(tree: Tree, node: string, seen: Set<string> = new Set()): Search {
+  seen.add(node);
+  const children = (tree[node] || []).filter(node => !seen.has(node));
+  for (const child of children) { seen.add(child); }
+
+  return { node, children: children.map(node => treeSearch(tree, node, seen)) }
 }
-async function fileExists(file: string) { return pfs.access(file).then(() => true).catch(() => false); }
 
-export async function linesToFurigana(lines: string[], buildDictionary = false) {
-  const {db} = await jmdictPromise;
-  const tags: Record<string, string> = JSON.parse(await getField(db, 'tags'));
-
-  const ret: string[] = [];
-  const overrides: Record<string, Furigana[]> = {};
-
-  const parentDir = process.cwd() + '/dict-hits-per-line';
-  await mkdirp(parentDir);
-
-  // this will get written to disk
-  const lightweight: (string|{line: string, hash: string, furigana: Furigana[][]})[] = [];
-  const totalHash = createHash('md5');
-
-  for (const line of lines) {
-    totalHash.update(line); // we'll use this to save some lightweight data about each line in this list of `lines`
-
-    if (!hasKanji(line) && !hasKana(line)) {
-      ret.push(line);
-      lightweight.push(line);
-      continue;
-    }
-    const parsed = await mecabJdepp(line);
-    const furigana = await morphemesToFurigana(line, parsed.morphemes, overrides);
-    const lineHash = base64_to_base64url(createHash('md5').update(line).digest('base64'));
-    ret.push(`<line id="hash-${lineHash}">` + furigana.map(furiganaToRuby).join('') + '</line>');
-    lightweight.push({line, hash: lineHash, furigana});
-
-    if (buildDictionary) {
-      const sidecarFile = `${parentDir}/line-${lineHash}.json`;
-      if (!(await fileExists(sidecarFile))) {
-        const dictHits = await enumerateDictionaryHits(parsed.morphemes, false, 10);
-        for (let i = 0; i < dictHits.length; i++) {
-          for (let j = 0; j < dictHits[i].results.length; j++) {
-            const words = await jmdictIdsToWords(dictHits[i].results[j].results);
-            for (let k = 0; k < words.length; k++) {
-              dictHits[i].results[j].results[k].summary = displayWordLight(words[k], tags);
-            }
-          }
-        }
-        await pfs.writeFile(sidecarFile,
-                            JSON.stringify({line, furigana, bunsetsus: parsed.bunsetsus, dictHits}, null, 1));
-        // we should put this block in a promise and await all such promises before returning, to get more throughput
-        // (we'd interleave computation between LevelDB/disk i/o)
-      }
-    }
-  }
-  {
-    const total = base64_to_base64url(totalHash.digest('base64'));
-    await pfs.writeFile(`${parentDir}/lightweight-${total}.json`, JSON.stringify(lightweight, null, 1));
-  }
-  return ret;
+function searchMap<T>(search: Search, f: (s: string) => T): SearchMapped<T> {
+  return {node: search.node, nodeMapped: f(search.node), children: search.children.map(node => searchMap(node, f))};
 }
 
 if (module === require.main) {
-  const USAGE = `USAGE:
-
-annotate MODE file1 file2
-
-MODE must be one of:
-- "furigana": add furigana to kanji (default)
-- "furigana-dict": same as "furigana" but also emit morpheme/dictionary information
-- "markdown": output detailed breakdowns of text in files
-
-Input streams are also understood:
-
-annotate MODE < inputfile
-
-cat inputfile | annotate MODE
-`;
-  enum Mode {
-    markdown = 'markdown',
-    furigana = 'furigana',
-    furiganaDict = 'furigana-dict',
-  }
-
   function renderDeconjugation(d: AdjDeconjugated|Deconjugated) {
     if ("auxiliaries" in d) { return `${d.auxiliaries.join(" + ")} + ${d.conjugation}`; }
     return d.conjugation;
   }
-
   (async () => {
-    {
-      for (
-          const line of
-              ['トカゲの尻尾切り',
-               // ブラックシャドー団は集団で盗みを行う窃盗団でお金持ちの家を狙い、家にある物全て根こそぎ盗んでいきます。',
-               // 'お待ちしておりました',
-               // '買ったんだ',
-               // 'どなたからでしたか？',
-               // '動物でも人間の心が分かります',
-               // 'ある日の朝早く、ジリリリンとおしりたんてい事務所の電話が鳴りました。',
-               // '鳥の鳴き声が森の静かさを破った',
-               // '早い',
-               // '昨日はさむかった',
-               // 'よかった',
-      ]) {
-        console.log('\n===\n');
-        const x = await analyzeSentence(line);
-        console.log('conj')
-        p(x.particlesConjphrases.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')))
-        console.log('deconj')
-        console.dir(x.particlesConjphrases.conjugatedPhrases.map(
-                        o => (o.deconj as (AdjDeconjugated | Deconjugated)[]).map(m => renderDeconjugation(m))),
-                    {depth: null})
-        // console.log('particles')
-        // console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]))
-        // p(x.particlesConjphrases.particles.map(o => o.chino))
-        if (false) {
-          const MAX_LINES = 10000;
-          const {db} = await jmdictPromise;
-          const tags: Record<string, string> = JSON.parse(await getField(db, 'tags'));
+    for (
+        const line of
+            ['トカゲの尻尾切り',
+             // ブラックシャドー団は集団で盗みを行う窃盗団でお金持ちの家を狙い、家にある物全て根こそぎ盗んでいきます。',
+             // 'お待ちしておりました',
+             // '買ったんだ',
+             // 'どなたからでしたか？',
+             // '動物でも人間の心が分かります',
+             // 'ある日の朝早く、ジリリリンとおしりたんてい事務所の電話が鳴りました。',
+             // '鳥の鳴き声が森の静かさを破った',
+             // '早い',
+             // '昨日はさむかった',
+             // 'よかった',
+    ]) {
+      console.log('\n===\n');
+      const x = await handleSentence(line);
+      if (typeof x === 'string') { continue }
+      console.log('conj')
+      p(x.clozes?.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')))
+      console.log('deconj')
+      console.dir(x.clozes?.conjugatedPhrases.map(
+                      o => (o.deconj as (AdjDeconjugated | Deconjugated)[]).map(m => renderDeconjugation(m))),
+                  {depth: null})
+      // console.log('particles')
+      // console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]))
+      // p(x.particlesConjphrases.particles.map(o => o.chino))
+      const SHOW_HITS: boolean = false;
+      if (SHOW_HITS) {
+        const MAX_LINES = 10000;
+        const {db} = await jmdictPromise;
+        const tags: Record<string, string> = JSON.parse(await getField(db, 'tags'));
 
-          for (const fromStart of x.dictionaryHits) {
-            for (const fromEnd of fromStart.results) {
-              console.log(`  - Vocab: ${contextClozeOrStringToString(fromEnd.run)} INFO`);
-              const hits = fromEnd.results.slice(0, MAX_LINES);
-              const words = await jmdictIdsToWords(hits);
-              for (const [wi, w] of words.entries()) {
-                console.log('    - ' + hits[wi].search + ' | ' + displayWordLight(w, tags));
-              }
-              if (fromEnd.results.length > MAX_LINES) {
-                console.log(`    - (… ${fromEnd.results.length - MAX_LINES} omitted) INFO`);
-              }
+        for (const fromStart of x.hits) {
+          for (const fromEnd of fromStart.results) {
+            console.log(`  - Vocab: ${contextClozeOrStringToString(fromEnd.run)} INFO`);
+            const hits = fromEnd.results.slice(0, MAX_LINES);
+            const words = await jmdictIdsToWords(hits);
+            for (const [wi, w] of words.entries()) {
+              console.log('    - ' + hits[wi].search + ' | ' + displayWordLight(w, tags));
+            }
+            if (fromEnd.results.length > MAX_LINES) {
+              console.log(`    - (… ${fromEnd.results.length - MAX_LINES} omitted) INFO`);
             }
           }
         }
       }
-      if (Math.random() > -1) { return };
-    }
-
-    let lines = `- @ 今日は良い天気だ。
-
-- @ たのしいですか。
-
-- @ 何できた？`.split('\n');
-    const [, , requestedMode, ...files] = process.argv;
-    if (!Object.values(Mode).includes(requestedMode as any)) {
-      console.error(USAGE);
-      process.exit(1);
-    }
-    const mode = requestedMode as Mode;
-
-    if (files.length === 0) {
-      const getStdin = require('get-stdin');
-
-      // no arguments, read from stdin. If stdin is empty, use default.
-      const raw = (await getStdin()).trim();
-      if (raw) { lines = raw.split('\n'); }
-    } else {
-      lines = flatmap(await Promise.all(files.map(f => pfs.readFile(f, 'utf8'))),
-                      s => s.trim().replace(/\r/g, '').split('\n'));
-    }
-
-    if (mode === Mode.furigana) {
-      console.log((await linesToFurigana(lines, false)).join('\n'));
-    } else if (mode === Mode.furiganaDict) {
-      console.log((await linesToFurigana(lines, true)).join('\n'));
-    } else if (mode === Mode.markdown) {
-      console.log((await linesToCurtizMarkdown(lines)).join('\n'));
-    } else {
-      const _: never = mode;
     }
   })();
 }

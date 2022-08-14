@@ -3,13 +3,13 @@
   "engines": {
     "node": ">=12.0.0"
   },
-  "version": "2.0.1",
+  "version": "3.0.0",
   "description": "Annotate Curtiz2 Markdown files with Japanese natural language parsing",
   "main": "annotateServer.js",
   "bin": {
-    "curtiz-japanese-nlp": "./index.js"
+    "curtiz-japanese-nlp-mecabunidic": "./mecabUnidic.js"
   },
-  "typings": "index.ts",
+  "typings": "annotate.ts",
   "scripts": {
     "test": "tape tests/test*.js",
     "build": "tsc -p .",
@@ -33,6 +33,7 @@
     "@types/mkdirp": "^1.0.1",
     "@types/node": "^12.12.21",
     "@types/node-gzip": "^1.1.0",
+    "@types/tape": "^4.13.2",
     "@types/xml2js": "^0.4.5",
     "tape": "^4.15.1",
     "typescript": "^3.8.3"

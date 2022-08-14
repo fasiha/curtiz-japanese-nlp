@@ -8,19 +8,15 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
-const crypto_1 = require("crypto");
 const curtiz_utils_1 = require("curtiz-utils");
 const fs_1 = require("fs");
 const jmdict_furigana_node_1 = require("jmdict-furigana-node");
 const jmdict_simplified_node_1 = require("jmdict-simplified-node");
 const kamiya_codec_1 = require("kamiya-codec");
-const mkdirp_1 = __importDefault(require("mkdirp"));
 const chino_particles_1 = require("./chino-particles");
 const jdepp_1 = require("./jdepp");
+const kanjidic_1 = require("./kanjidic");
 const mecabUnidic_1 = require("./mecabUnidic");
 var jmdict_furigana_node_2 = require("jmdict-furigana-node");
 exports.furiganaToString = jmdict_furigana_node_2.furiganaToString;
@@ -819,18 +815,6 @@ function checkFurigana(sentence, furigana) {
     return ret;
 }
 function toruby(f) { return typeof f === 'string' ? f : f.ruby; }
-function analyzeSentence(sentence, overrides = {}) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const parsed = yield mecabJdepp(sentence);
-        // Promises
-        const furiganaP = curtiz_utils_1.hasKanji(sentence) ? morphemesToFurigana(sentence, parsed.morphemes, overrides) : undefined;
-        const particlesConjphrasesP = identifyFillInBlanks(parsed.bunsetsus.map(o => o.morphemes));
-        const dictionaryHitsP = enumerateDictionaryHits(parsed.morphemes);
-        let [furigana, particlesConjphrases, dictionaryHits] = yield Promise.all([furiganaP, particlesConjphrasesP, dictionaryHitsP]);
-        return { furigana, particlesConjphrases, dictionaryHits };
-    });
-}
-exports.analyzeSentence = analyzeSentence;
 function jmdictIdsToWords(hits) {
     return __awaiter(this, void 0, void 0, function* () {
         const { db } = yield exports.jmdictPromise;
@@ -845,142 +829,63 @@ exports.getTags = getTags;
 function contextClozeToString(c) {
     return (c.left || c.right) ? `${c.left}[${c.cloze}]${c.right}` : c.cloze;
 }
-exports.contextClozeToString = contextClozeToString;
 function contextClozeOrStringToString(c) {
     return typeof c === 'string' ? c : contextClozeToString(c);
 }
-exports.contextClozeOrStringToString = contextClozeOrStringToString;
-function linesToCurtizMarkdown(lines) {
-    var _a;
+const tagsPromise = exports.jmdictPromise.then(({ db }) => db)
+    .then(db => jmdict_simplified_node_1.getField(db, 'tags'))
+    .then(raw => JSON.parse(raw));
+const kanjidicPromise = kanjidic_1.setupSimple();
+const wanikaniGraph = JSON.parse(fs_1.readFileSync('wanikani-kanji-graph.json', 'utf8'));
+function handleSentence(sentence, overrides = {}, includeWord = true, extractParticlesConj = true) {
     return __awaiter(this, void 0, void 0, function* () {
-        const ret = [];
-        const { db } = yield exports.jmdictPromise;
-        const tags = JSON.parse(yield jmdict_simplified_node_1.getField(db, 'tags'));
-        const MAX_LINES = 8;
-        const overrides = {};
-        const startRegexp = /^-\s+@\s+/;
-        for (const line of lines) {
-            if (!startRegexp.test(line)) {
-                ret.push(line);
-                continue;
-            }
-            const sentence = line.slice((_a = line.match(startRegexp)) === null || _a === void 0 ? void 0 : _a[0].length);
-            const results = yield analyzeSentence(sentence, overrides);
-            ret.push(results.furigana ? '- @ ' + results.furigana.map(furiganaToRuby).join('') : line);
-            {
-                if (results.particlesConjphrases.particles.length) {
-                    ret.push('  - Particles');
-                    for (const { cloze } of results.particlesConjphrases.particles) {
-                        ret.push(`    - ${cloze.left}${cloze.left || cloze.right ? '[' + cloze.cloze + ']' : cloze.cloze}${cloze.right}`);
-                    }
-                }
-                if (results.particlesConjphrases.conjugatedPhrases.length) {
-                    ret.push('  - Conjugated phrases');
-                    for (const c of results.particlesConjphrases.conjugatedPhrases) {
-                        const cloze = c.cloze;
-                        ret.push(`    - ${contextClozeToString(cloze)} | ${c.lemmas.map(furiganaToRuby).join(' + ')}`);
-                    }
-                }
-            }
-            {
-                ret.push('  - Vocab');
-                for (const fromStart of results.dictionaryHits) {
-                    for (const fromEnd of fromStart.results) {
-                        ret.push(`  - Vocab: ${contextClozeOrStringToString(fromEnd.run)} INFO`);
-                        const hits = fromEnd.results.slice(0, MAX_LINES);
-                        const words = yield jmdictIdsToWords(hits);
-                        for (const [wi, w] of words.entries()) {
-                            ret.push('    - ' + hits[wi].search + ' | ' + displayWordLight(w, tags));
-                        }
-                        if (fromEnd.results.length > MAX_LINES) {
-                            ret.push(`    - (… ${fromEnd.results.length - MAX_LINES} omitted) INFO`);
-                        }
+        if (!curtiz_utils_1.hasKanji(sentence) && !curtiz_utils_1.hasKana(sentence)) {
+            const resBody = sentence;
+            return resBody;
+        }
+        const res = yield mecabJdepp(sentence);
+        const morphemes = res.morphemes;
+        const bunsetsus = res.bunsetsus;
+        const furigana = yield morphemesToFurigana(sentence, morphemes, overrides);
+        const tags = yield tagsPromise;
+        const dictHits = yield enumerateDictionaryHits(morphemes, true, 10);
+        for (let i = 0; i < dictHits.length; i++) {
+            for (let j = 0; j < dictHits[i].results.length; j++) {
+                const words = yield jmdictIdsToWords(dictHits[i].results[j].results);
+                for (let k = 0; k < words.length; k++) {
+                    dictHits[i].results[j].results[k].summary = displayWordLight(words[k], tags);
+                    if (includeWord) {
+                        dictHits[i].results[j].results[k].word = words[k];
                     }
                 }
             }
         }
-        return ret;
+        const kanjidic = yield kanjidicPromise;
+        const kanjidicHits = Object.fromEntries(sentence.split('')
+            .filter(c => c in kanjidic)
+            .map(c => [c, Object.assign(Object.assign({}, kanjidic[c]), { dependencies: searchMap(treeSearch(wanikaniGraph, c), c => (kanjidic[c] || null))
+                    .children })]));
+        let clozes = undefined;
+        if (extractParticlesConj) {
+            clozes = yield identifyFillInBlanks(bunsetsus.map(o => o.morphemes));
+        }
+        const resBody = { furigana, hits: dictHits, kanjidic: kanjidicHits, clozes, tags: includeWord ? tags : undefined, bunsetsus };
+        return resBody;
     });
 }
-exports.linesToCurtizMarkdown = linesToCurtizMarkdown;
-// RFC 4648 §5: base64url
-function base64_to_base64url(base64) {
-    return base64.replace(/\//g, '_').replace(/\+/g, '-').replace(/=+$/g, '');
+exports.handleSentence = handleSentence;
+function treeSearch(tree, node, seen = new Set()) {
+    seen.add(node);
+    const children = (tree[node] || []).filter(node => !seen.has(node));
+    for (const child of children) {
+        seen.add(child);
+    }
+    return { node, children: children.map(node => treeSearch(tree, node, seen)) };
 }
-function fileExists(file) {
-    return __awaiter(this, void 0, void 0, function* () { return fs_1.promises.access(file).then(() => true).catch(() => false); });
+function searchMap(search, f) {
+    return { node: search.node, nodeMapped: f(search.node), children: search.children.map(node => searchMap(node, f)) };
 }
-function linesToFurigana(lines, buildDictionary = false) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const { db } = yield exports.jmdictPromise;
-        const tags = JSON.parse(yield jmdict_simplified_node_1.getField(db, 'tags'));
-        const ret = [];
-        const overrides = {};
-        const parentDir = process.cwd() + '/dict-hits-per-line';
-        yield mkdirp_1.default(parentDir);
-        // this will get written to disk
-        const lightweight = [];
-        const totalHash = crypto_1.createHash('md5');
-        for (const line of lines) {
-            totalHash.update(line); // we'll use this to save some lightweight data about each line in this list of `lines`
-            if (!curtiz_utils_1.hasKanji(line) && !curtiz_utils_1.hasKana(line)) {
-                ret.push(line);
-                lightweight.push(line);
-                continue;
-            }
-            const parsed = yield mecabJdepp(line);
-            const furigana = yield morphemesToFurigana(line, parsed.morphemes, overrides);
-            const lineHash = base64_to_base64url(crypto_1.createHash('md5').update(line).digest('base64'));
-            ret.push(`<line id="hash-${lineHash}">` + furigana.map(furiganaToRuby).join('') + '</line>');
-            lightweight.push({ line, hash: lineHash, furigana });
-            if (buildDictionary) {
-                const sidecarFile = `${parentDir}/line-${lineHash}.json`;
-                if (!(yield fileExists(sidecarFile))) {
-                    const dictHits = yield enumerateDictionaryHits(parsed.morphemes, false, 10);
-                    for (let i = 0; i < dictHits.length; i++) {
-                        for (let j = 0; j < dictHits[i].results.length; j++) {
-                            const words = yield jmdictIdsToWords(dictHits[i].results[j].results);
-                            for (let k = 0; k < words.length; k++) {
-                                dictHits[i].results[j].results[k].summary = displayWordLight(words[k], tags);
-                            }
-                        }
-                    }
-                    yield fs_1.promises.writeFile(sidecarFile, JSON.stringify({ line, furigana, bunsetsus: parsed.bunsetsus, dictHits }, null, 1));
-                    // we should put this block in a promise and await all such promises before returning, to get more throughput
-                    // (we'd interleave computation between LevelDB/disk i/o)
-                }
-            }
-        }
-        {
-            const total = base64_to_base64url(totalHash.digest('base64'));
-            yield fs_1.promises.writeFile(`${parentDir}/lightweight-${total}.json`, JSON.stringify(lightweight, null, 1));
-        }
-        return ret;
-    });
-}
-exports.linesToFurigana = linesToFurigana;
 if (module === require.main) {
-    const USAGE = `USAGE:
-
-annotate MODE file1 file2
-
-MODE must be one of:
-- "furigana": add furigana to kanji (default)
-- "furigana-dict": same as "furigana" but also emit morpheme/dictionary information
-- "markdown": output detailed breakdowns of text in files
-
-Input streams are also understood:
-
-annotate MODE < inputfile
-
-cat inputfile | annotate MODE
-`;
-    let Mode;
-    (function (Mode) {
-        Mode["markdown"] = "markdown";
-        Mode["furigana"] = "furigana";
-        Mode["furiganaDict"] = "furigana-dict";
-    })(Mode || (Mode = {}));
     function renderDeconjugation(d) {
         if ("auxiliaries" in d) {
             return `${d.auxiliaries.join(" + ")} + ${d.conjugation}`;
@@ -988,75 +893,40 @@ cat inputfile | annotate MODE
         return d.conjugation;
     }
     (() => __awaiter(void 0, void 0, void 0, function* () {
-        {
-            for (const line of ['トカゲの尻尾切り',
-            ]) {
-                console.log('\n===\n');
-                const x = yield analyzeSentence(line);
-                console.log('conj');
-                p(x.particlesConjphrases.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')));
-                console.log('deconj');
-                console.dir(x.particlesConjphrases.conjugatedPhrases.map(o => o.deconj.map(m => renderDeconjugation(m))), { depth: null });
-                // console.log('particles')
-                // console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]))
-                // p(x.particlesConjphrases.particles.map(o => o.chino))
-                if (false) {
-                    const MAX_LINES = 10000;
-                    const { db } = yield exports.jmdictPromise;
-                    const tags = JSON.parse(yield jmdict_simplified_node_1.getField(db, 'tags'));
-                    for (const fromStart of x.dictionaryHits) {
-                        for (const fromEnd of fromStart.results) {
-                            console.log(`  - Vocab: ${contextClozeOrStringToString(fromEnd.run)} INFO`);
-                            const hits = fromEnd.results.slice(0, MAX_LINES);
-                            const words = yield jmdictIdsToWords(hits);
-                            for (const [wi, w] of words.entries()) {
-                                console.log('    - ' + hits[wi].search + ' | ' + displayWordLight(w, tags));
-                            }
-                            if (fromEnd.results.length > MAX_LINES) {
-                                console.log(`    - (… ${fromEnd.results.length - MAX_LINES} omitted) INFO`);
-                            }
+        var _a, _b;
+        for (const line of ['トカゲの尻尾切り',
+        ]) {
+            console.log('\n===\n');
+            const x = yield handleSentence(line);
+            if (typeof x === 'string') {
+                continue;
+            }
+            console.log('conj');
+            p((_a = x.clozes) === null || _a === void 0 ? void 0 : _a.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')));
+            console.log('deconj');
+            console.dir((_b = x.clozes) === null || _b === void 0 ? void 0 : _b.conjugatedPhrases.map(o => o.deconj.map(m => renderDeconjugation(m))), { depth: null });
+            // console.log('particles')
+            // console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]))
+            // p(x.particlesConjphrases.particles.map(o => o.chino))
+            const SHOW_HITS = false;
+            if (SHOW_HITS) {
+                const MAX_LINES = 10000;
+                const { db } = yield exports.jmdictPromise;
+                const tags = JSON.parse(yield jmdict_simplified_node_1.getField(db, 'tags'));
+                for (const fromStart of x.hits) {
+                    for (const fromEnd of fromStart.results) {
+                        console.log(`  - Vocab: ${contextClozeOrStringToString(fromEnd.run)} INFO`);
+                        const hits = fromEnd.results.slice(0, MAX_LINES);
+                        const words = yield jmdictIdsToWords(hits);
+                        for (const [wi, w] of words.entries()) {
+                            console.log('    - ' + hits[wi].search + ' | ' + displayWordLight(w, tags));
+                        }
+                        if (fromEnd.results.length > MAX_LINES) {
+                            console.log(`    - (… ${fromEnd.results.length - MAX_LINES} omitted) INFO`);
                         }
                     }
                 }
             }
-            if (Math.random() > -1) {
-                return;
-            }
-            ;
-        }
-        let lines = `- @ 今日は良い天気だ。
-
-- @ たのしいですか。
-
-- @ 何できた？`.split('\n');
-        const [, , requestedMode, ...files] = process.argv;
-        if (!Object.values(Mode).includes(requestedMode)) {
-            console.error(USAGE);
-            process.exit(1);
-        }
-        const mode = requestedMode;
-        if (files.length === 0) {
-            const getStdin = require('get-stdin');
-            // no arguments, read from stdin. If stdin is empty, use default.
-            const raw = (yield getStdin()).trim();
-            if (raw) {
-                lines = raw.split('\n');
-            }
-        }
-        else {
-            lines = curtiz_utils_1.flatmap(yield Promise.all(files.map(f => fs_1.promises.readFile(f, 'utf8'))), s => s.trim().replace(/\r/g, '').split('\n'));
-        }
-        if (mode === Mode.furigana) {
-            console.log((yield linesToFurigana(lines, false)).join('\n'));
-        }
-        else if (mode === Mode.furiganaDict) {
-            console.log((yield linesToFurigana(lines, true)).join('\n'));
-        }
-        else if (mode === Mode.markdown) {
-            console.log((yield linesToCurtizMarkdown(lines)).join('\n'));
-        }
-        else {
-            const _ = mode;
         }
     }))();
 }
