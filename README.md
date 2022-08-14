@@ -105,6 +105,17 @@ If you plan to interact with Curtiz just through a JSON web server, the easiest 
 
 The first time you run this, it will take several seconds while it builds a Leveldb cache of JMdict.
 
+Now you're ready to hit a REST endpoint. The following will ask `curl` to POST a Japanese sentence in a specific JSON structure to the appropriate endpoint, and save the result to `curtiz.json`:
+```
+curl --data '{"sentence": "へましたらリーダーに切られるだけ"}' \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -o curtiz.json \
+  http://127.0.0.1:8133/api/v1/sentence
+```
+
+As described below, I need to formally describe the structure of this data. In the meantime, please check the [tests](./tests) and the [TypeScript interfaces](./interfaces.ts), especially the `v1ResSentenceAnalyzed` type, to see what data is where.
+
 ## API
 In your Node project, import Curtiz with
 ```ts
