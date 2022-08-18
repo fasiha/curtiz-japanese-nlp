@@ -1,6 +1,14 @@
-import {createHash} from 'crypto';
-import {allSubstrings, dedupeLimit, flatten, hasHiragana, hasKana, hasKanji, kata2hira} from 'curtiz-utils'
-import {promises as pfs, readFileSync} from 'fs';
+import {
+  allSubstrings,
+  dedupeLimit,
+  flatten,
+  generateContextClozed,
+  hasHiragana,
+  hasKana,
+  hasKanji,
+  kata2hira
+} from 'curtiz-utils'
+import {readFileSync} from 'fs';
 import {Entry, Furigana, JmdictFurigana, Ruby, setup as setupJmdictFurigana} from 'jmdict-furigana-node';
 import {
   getField,
@@ -15,7 +23,6 @@ import {
   Xref,
 } from 'jmdict-simplified-node';
 import {adjDeconjugate, AdjDeconjugated, Deconjugated, verbDeconjugate} from 'kamiya-codec';
-import mkdirp from 'mkdirp';
 
 import {lookup} from './chino-particles';
 import {
@@ -282,40 +289,6 @@ function forkingPaths<T>(v: T[][]): T[][] {
   return ret;
 }
 
-/**
- * Ensure needle is found in haystack only once
- * @param haystack big string
- * @param needle little string
- */
-function appearsExactlyOnce(haystack: string, needle: string): boolean {
-  const hit = haystack.indexOf(needle);
-  return hit >= 0 && haystack.indexOf(needle, hit + 1) < 0;
-}
-
-/**
- * Given three consecutive substrings (the arguments), return `{left: left2, cloze, right: right2}` where
- * `left2` and `right2` are as short as possible and `${left2}${cloze}${right2}` is unique in the full string.
- * @param left left string, possibly empty
- * @param cloze middle string
- * @param right right string, possible empty
- * @throws in the unlikely event that such a return string cannot be build (I cannot think of an example though)
- */
-function generateContextClozed(left: string, cloze: string, right: string): ContextCloze {
-  const sentence = left + cloze + right;
-  let leftContext = '';
-  let rightContext = '';
-  let contextLength = 0;
-  while (!appearsExactlyOnce(sentence, leftContext + cloze + rightContext)) {
-    contextLength++;
-    if (contextLength > left.length && contextLength > right.length) {
-      console.error({sentence, left, cloze, right, leftContext, rightContext, contextLength});
-      throw new Error('Ran out of context to build unique cloze');
-    }
-    leftContext = left.slice(-contextLength);
-    rightContext = right.slice(0, contextLength);
-  }
-  return {left: leftContext, cloze, right: rightContext};
-}
 const bunsetsuToString = (morphemes: Morpheme[]) => morphemes.map(m => m.literal).join('');
 function betterMorphemePredicate(m: Morpheme): boolean {
   return !(m.partOfSpeech[0] === 'supplementary_symbol') && !(m.partOfSpeech[0] === 'particle');
