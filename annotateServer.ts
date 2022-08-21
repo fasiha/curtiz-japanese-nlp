@@ -34,10 +34,15 @@ app.post('/api/v1/sentences', async (req, res) => {
   res.json(resBody);
 });
 
-app.get('/jmdict/:wordId', async (req, res) => {
+app.get('/api/v1/jmdict/:wordId', async (req, res) => {
   const {wordId} = req.params;
   if (wordId) {
-    res.json((await jmdictIdsToWords([{wordId}]))[0]);
+    try {
+      res.json((await jmdictIdsToWords([{wordId}]))[0]);
+    } catch (e) {
+      console.error('error:', e);
+      res.status(404).json('id not found?');
+    }
   } else {
     res.status(400).json('missing id');
   }
