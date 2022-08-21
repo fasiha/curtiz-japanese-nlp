@@ -77,7 +77,7 @@ function enumerateDictionaryHits(plainMorphemes, full = true, limit = -1) {
             for (let endIdx = Math.min(morphemes.length, startIdx + 5); endIdx > startIdx; --endIdx) {
                 const run = morphemes.slice(startIdx, endIdx);
                 const runLiteralCore = bunsetsuToString(run);
-                const runLiteral = simplify(generateContextClozed(bunsetsuToString(morphemes.slice(0, startIdx)), runLiteralCore, bunsetsuToString(morphemes.slice(endIdx))));
+                const runLiteral = simplify(curtiz_utils_1.generateContextClozed(bunsetsuToString(morphemes.slice(0, startIdx)), runLiteralCore, bunsetsuToString(morphemes.slice(endIdx))));
                 if (!full) {
                     // skip particles like は and も if they're by themselves as an optimization
                     if (runLiteralCore.length === 1 && curtiz_utils_1.hasKana(runLiteralCore[0]) && runLiteralCore === run[0].lemma) {
@@ -139,7 +139,7 @@ function enumerateDictionaryHits(plainMorphemes, full = true, limit = -1) {
                     const endIdx = startIdx + 1;
                     const run = morphemes.slice(startIdx, endIdx);
                     const runLiteralCore = bunsetsuToString(run);
-                    const runLiteral = simplify(generateContextClozed(bunsetsuToString(morphemes.slice(0, startIdx)), runLiteralCore, bunsetsuToString(morphemes.slice(endIdx))));
+                    const runLiteral = simplify(curtiz_utils_1.generateContextClozed(bunsetsuToString(morphemes.slice(0, startIdx)), runLiteralCore, bunsetsuToString(morphemes.slice(endIdx))));
                     results.push({ endIdx, run: runLiteral, results: curtiz_utils_1.dedupeLimit(scored, o => o.wordId, limit) });
                 }
             }
@@ -237,39 +237,6 @@ function forkingPaths(v) {
         ret = curtiz_utils_1.flatten(u.map(x => ret.map(v => v.concat(x))));
     }
     return ret;
-}
-/**
- * Ensure needle is found in haystack only once
- * @param haystack big string
- * @param needle little string
- */
-function appearsExactlyOnce(haystack, needle) {
-    const hit = haystack.indexOf(needle);
-    return hit >= 0 && haystack.indexOf(needle, hit + 1) < 0;
-}
-/**
- * Given three consecutive substrings (the arguments), return `{left: left2, cloze, right: right2}` where
- * `left2` and `right2` are as short as possible and `${left2}${cloze}${right2}` is unique in the full string.
- * @param left left string, possibly empty
- * @param cloze middle string
- * @param right right string, possible empty
- * @throws in the unlikely event that such a return string cannot be build (I cannot think of an example though)
- */
-function generateContextClozed(left, cloze, right) {
-    const sentence = left + cloze + right;
-    let leftContext = '';
-    let rightContext = '';
-    let contextLength = 0;
-    while (!appearsExactlyOnce(sentence, leftContext + cloze + rightContext)) {
-        contextLength++;
-        if (contextLength > left.length && contextLength > right.length) {
-            console.error({ sentence, left, cloze, right, leftContext, rightContext, contextLength });
-            throw new Error('Ran out of context to build unique cloze');
-        }
-        leftContext = left.slice(-contextLength);
-        rightContext = right.slice(0, contextLength);
-    }
-    return { left: leftContext, cloze, right: rightContext };
 }
 const bunsetsuToString = (morphemes) => morphemes.map(m => m.literal).join('');
 function betterMorphemePredicate(m) {
@@ -409,7 +376,7 @@ function identifyFillInBlanks(bunsetsus, verbose = false) {
                     ((pos0.startsWith('aux') && (pos1.startsWith('desu') || pos1.startsWith('da'))))) {
                     const middle = bunsetsuToString(sliceBunsetsu);
                     const right = sentence.slice(left.length + middle.length);
-                    const cloze = generateContextClozed(left, middle, right);
+                    const cloze = curtiz_utils_1.generateContextClozed(left, middle, right);
                     const res = yield morphemesToConjPhrases(startIdx + start, sliceBunsetsu, cloze);
                     if (verbose) {
                         console.log('^ found', res.deconj);
@@ -427,7 +394,7 @@ function identifyFillInBlanks(bunsetsus, verbose = false) {
                     const endIdx = startIdxParticle + 1;
                     const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(fullBunsetsu.slice(0, pidx));
                     const right = bunsetsuToString(fullBunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
-                    const cloze = generateContextClozed(left, particle.literal, right);
+                    const cloze = curtiz_utils_1.generateContextClozed(left, particle.literal, right);
                     const chino = chino_particles_1.lookup(cloze.cloze);
                     if (particle.literal !== particle.lemma) {
                         const chinoLemma = chino_particles_1.lookup(particle.lemma);
@@ -459,7 +426,7 @@ function identifyFillInBlanks(bunsetsus, verbose = false) {
                     const last = adjacent[adjacent.length - 1];
                     const left = bunsetsuToString(allMorphemes.slice(0, first.startIdx));
                     const right = bunsetsuToString(allMorphemes.slice(last.endIdx));
-                    const cloze = generateContextClozed(left, combined, right);
+                    const cloze = curtiz_utils_1.generateContextClozed(left, combined, right);
                     particles.push({
                         chino: hits,
                         cloze,
