@@ -80,7 +80,7 @@ As you can tell from the above, Curtiz gives you a *lot* of information that *mi
 ## Setup
 First, make sure you have [Git](https://git-scm.com) and [Node.js](https://nodejs.org) installed (any recent version is fine).
 
-Then install MeCab, Unidic, and J.DepP. MeCab and Unidic are easy to install on macOS via [Homebrew](https://brew.sh/), but [J.DepP](https://www.tkl.iis.u-tokyo.ac.jp/~ynaga/jdepp/) is a "normal" old-school Unix C++ build (`./configure && make`…) and if you've never built such a project before, do your best to follow the instructions and open an issue if you need help.
+Then install MeCab, Unidic, and J.DepP. MeCab and Unidic are easy to install on macOS via [Homebrew](https://brew.sh/), but [J.DepP](https://www.tkl.iis.u-tokyo.ac.jp/~ynaga/jdepp/) is a "normal" old-school Unix C++ build (`./configure --with-mecab-dict=UNI && make`…; `./configure --help` is useful and explains what `with-mecab-dict` is doing) and if you've never built such a project before, do your best to follow the instructions and open an issue if you need help.
 
 Then, download the followed required files (TODO: automatically download these!):
 1. `jmdict-eng-3.1.0.json` from [JMdict-Simplified](https://github.com/scriptin/jmdict-simplified)

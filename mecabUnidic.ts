@@ -253,8 +253,8 @@ const inflectionTypeObj = keysToObj(inflectionTypeKeys);
 export function invokeMecab(text: string): Promise<string> {
   const native = !(process.env["NODE_MECAB"]);
   return new Promise((resolve, reject) => {
-    let spawned = native ? spawn('mecab', ['-d', '/usr/local/lib/mecab/dic/unidic']) : spawn('npx', [
-      'mecab-emscripten-node', '-d', process.env["UNIDIC"] || '/usr/local/lib/mecab/dic/unidic'
+    let spawned = native ? spawn('mecab', ['-d', '/opt/homebrew/lib/mecab/dic/unidic']) : spawn('npx', [
+      'mecab-emscripten-node', '-d', process.env["UNIDIC"] || '/opt/homebrew/lib/mecab/dic/unidic'
     ].concat(process.env["MECABRC"] ? ['-r', process.env["MECABRC"] || '/usr/local/etc/mecabrc'] : []));
     spawned.stdin.write(text);
     spawned.stdin.write('\n'); // necessary, otherwise MeCab says `input-buffer overflow.`
