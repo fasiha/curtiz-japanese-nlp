@@ -26,9 +26,12 @@ app.post('/api/v1/sentence', (req, res) => __awaiter(void 0, void 0, void 0, fun
         res.status(400).json('bad payload' + JSON.stringify(body.left));
         return;
     }
-    const { sentence, overrides } = body.right;
-    // const overrides = body.right
-    res.json(yield annotate_1.handleSentence(sentence, overrides || {}, !!req.query.includeWord, !!req.query.includeClozes));
+    const { sentence, overrides = {}, nBest = 1 } = body.right;
+    if (nBest < 1) {
+        res.status(400).json('nBest should be positive');
+        return;
+    }
+    res.json(yield annotate_1.handleSentence(sentence, overrides, !!req.query.includeWord, !!req.query.includeClozes, nBest));
 }));
 app.post('/api/v1/sentences', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const body = interfaces_1.v1ReqSentences.decode(req.body);
@@ -39,7 +42,8 @@ app.post('/api/v1/sentences', (req, res) => __awaiter(void 0, void 0, void 0, fu
     const { sentences, overrides } = body.right;
     const resBody = [];
     for (const sentence of sentences) {
-        resBody.push(yield annotate_1.handleSentence(sentence, overrides || {}, !!req.query.includeWord, !!req.query.includeClozes));
+        // don't handle MeCab nBest parsing here
+        resBody.push((yield annotate_1.handleSentence(sentence, overrides || {}, !!req.query.includeWord, !!req.query.includeClozes))[0]);
     }
     res.json(resBody);
 }));

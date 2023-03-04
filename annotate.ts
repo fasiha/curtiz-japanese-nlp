@@ -33,7 +33,8 @@ import {
   ScoreHit,
   ScoreHits,
   SearchMapped,
-  v1ResSentence
+  v1ResSentence,
+  v1ResSentenceNbest
 } from './interfaces';
 import {addJdepp, Bunsetsu} from './jdepp';
 import {setupSimple as kanjidicSetup, SimpleCharacter} from './kanjidic';
@@ -59,15 +60,22 @@ export const jmdictPromise = setupJmdict(process.env['JMDICT_SIMPLIFIED_LEVELDB'
  */
 const DICTIONARY_LIMIT = 20;
 
+/**
+ * Outer index: 1 through `nBest` MeCab parsings.
+ * Inner index: individual morphemes/bunsetsu
+ */
 interface MecabJdeppParsed {
   morphemes: Morpheme[];
   bunsetsus: Bunsetsu<Morpheme>[];
 }
-export async function mecabJdepp(sentence: string): Promise<MecabJdeppParsed> {
-  let rawMecab = await invokeMecab(sentence);
-  let morphemes = maybeMorphemesToMorphemes(parseMecab(sentence, rawMecab)[0].filter(o => !!o));
-  let bunsetsus = await addJdepp(rawMecab, morphemes);
-  return {morphemes, bunsetsus};
+export async function mecabJdepp(sentence: string, nBest = 1): Promise<MecabJdeppParsed[]> {
+  let rawMecab = await invokeMecab(sentence, nBest);
+  let {morphemes: allSentencesMorphemes, raws: allSentencesRaws} = parseMecab(rawMecab, nBest);
+  // throw away multiple sentences, we're only going to pass in one (hopefully)
+  const morphemes = allSentencesMorphemes[0];
+  const raws = allSentencesRaws[0];
+  const bunsetsus = await Promise.all(morphemes.map((attempt, idx) => addJdepp(raws[idx], attempt)))
+  return morphemes.map((attempt, idx) => ({morphemes: attempt, bunsetsus: bunsetsus[idx]}));
 }
 
 const p = (x: any) => console.dir(x, {depth: null});
@@ -829,44 +837,46 @@ const wanikaniGraph: {[k: string]: string[]}&{metadata: Record<string, string>} 
     JSON.parse(readFileSync('wanikani-kanji-graph.json', 'utf8'));
 
 export async function handleSentence(sentence: string, overrides: Record<string, Furigana[]> = {}, includeWord = true,
-                                     extractParticlesConj = true): Promise<v1ResSentence> {
+                                     extractParticlesConj = true, nBest = 1): Promise<v1ResSentenceNbest> {
   if (!hasKanji(sentence) && !hasKana(sentence)) {
     const resBody: v1ResSentence = sentence;
-    return resBody;
+    return [resBody];
   }
 
-  const res = await mecabJdepp(sentence)
-  const morphemes: Morpheme[] = res.morphemes;
-  const bunsetsus: Bunsetsu<Morpheme>[] = res.bunsetsus;
-  const furigana = await morphemesToFurigana(sentence, morphemes, overrides);
-  const tags = await tagsPromise;
-  const dictHits = await enumerateDictionaryHits(morphemes, true, 10);
-  for (let i = 0; i < dictHits.length; i++) {
-    for (let j = 0; j < dictHits[i].results.length; j++) {
-      const words = await jmdictIdsToWords(dictHits[i].results[j].results);
-      for (let k = 0; k < words.length; k++) {
-        dictHits[i].results[j].results[k].summary = displayWordLight(words[k], tags);
-        if (includeWord) { dictHits[i].results[j].results[k].word = words[k]; }
+  const res = await mecabJdepp(sentence, nBest);
+  return Promise.all(res.map(async res => {
+    const morphemes: Morpheme[] = res.morphemes;
+    const bunsetsus: Bunsetsu<Morpheme>[] = res.bunsetsus;
+    const furigana = await morphemesToFurigana(sentence, morphemes, overrides);
+    const tags = await tagsPromise;
+    const dictHits = await enumerateDictionaryHits(morphemes, true, 10);
+    for (let i = 0; i < dictHits.length; i++) {
+      for (let j = 0; j < dictHits[i].results.length; j++) {
+        const words = await jmdictIdsToWords(dictHits[i].results[j].results);
+        for (let k = 0; k < words.length; k++) {
+          dictHits[i].results[j].results[k].summary = displayWordLight(words[k], tags);
+          if (includeWord) { dictHits[i].results[j].results[k].word = words[k]; }
+        }
       }
     }
-  }
 
-  const kanjidic = await kanjidicPromise;
-  const kanjidicHits =
-      Object.fromEntries(sentence.split('')
-                             .filter(c => c in kanjidic)
-                             .map(c => [c, {
-                                    ...kanjidic[c],
-                                    dependencies: searchMap(treeSearch(wanikaniGraph, c),
-                                                            c => (kanjidic[c] || null) as SimpleCharacter | null)
-                                                      .children
-                                  }]));
+    const kanjidic = await kanjidicPromise;
+    const kanjidicHits =
+        Object.fromEntries(sentence.split('')
+                               .filter(c => c in kanjidic)
+                               .map(c => [c, {
+                                      ...kanjidic[c],
+                                      dependencies: searchMap(treeSearch(wanikaniGraph, c),
+                                                              c => (kanjidic[c] || null) as SimpleCharacter | null)
+                                                        .children
+                                    }]));
 
-  let clozes: undefined|FillInTheBlanks = undefined;
-  if (extractParticlesConj) { clozes = await identifyFillInBlanks(bunsetsus.map(o => o.morphemes)); }
-  const resBody: v1ResSentence =
-      {furigana, hits: dictHits, kanjidic: kanjidicHits, clozes, tags: includeWord ? tags : undefined, bunsetsus};
-  return resBody;
+    let clozes: undefined|FillInTheBlanks = undefined;
+    if (extractParticlesConj) { clozes = await identifyFillInBlanks(bunsetsus.map(o => o.morphemes)); }
+    const resBody: v1ResSentence =
+        {furigana, hits: dictHits, kanjidic: kanjidicHits, clozes, tags: includeWord ? tags : undefined, bunsetsus};
+    return resBody;
+  }))
 }
 
 type Tree = Record<string, string[]>;
@@ -907,33 +917,35 @@ if (module === require.main) {
              // 'よかった',
     ]) {
       console.log('\n===\n');
-      const x = await handleSentence(line);
-      if (typeof x === 'string') { continue }
-      console.log('conj')
-      p(x.clozes?.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')))
-      console.log('deconj')
-      console.dir(x.clozes?.conjugatedPhrases.map(
-                      o => (o.deconj as (AdjDeconjugated | Deconjugated)[]).map(m => renderDeconjugation(m))),
-                  {depth: null})
-      // console.log('particles')
-      // console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]))
-      // p(x.particlesConjphrases.particles.map(o => o.chino))
-      const SHOW_HITS: boolean = false;
-      if (SHOW_HITS) {
-        const MAX_LINES = 10000;
-        const {db} = await jmdictPromise;
-        const tags: Record<string, string> = JSON.parse(await getField(db, 'tags'));
+      const xs = await handleSentence(line);
+      for (const x of xs) {
+        if (typeof x === 'string') { continue }
+        console.log('conj')
+        p(x.clozes?.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')))
+        console.log('deconj')
+        console.dir(x.clozes?.conjugatedPhrases.map(
+                        o => (o.deconj as (AdjDeconjugated | Deconjugated)[]).map(m => renderDeconjugation(m))),
+                    {depth: null})
+        // console.log('particles')
+        // console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]))
+        // p(x.particlesConjphrases.particles.map(o => o.chino))
+        const SHOW_HITS: boolean = false;
+        if (SHOW_HITS) {
+          const MAX_LINES = 10000;
+          const {db} = await jmdictPromise;
+          const tags: Record<string, string> = JSON.parse(await getField(db, 'tags'));
 
-        for (const fromStart of x.hits) {
-          for (const fromEnd of fromStart.results) {
-            console.log(`  - Vocab: ${contextClozeOrStringToString(fromEnd.run)} INFO`);
-            const hits = fromEnd.results.slice(0, MAX_LINES);
-            const words = await jmdictIdsToWords(hits);
-            for (const [wi, w] of words.entries()) {
-              console.log('    - ' + hits[wi].search + ' | ' + displayWordLight(w, tags));
-            }
-            if (fromEnd.results.length > MAX_LINES) {
-              console.log(`    - (… ${fromEnd.results.length - MAX_LINES} omitted) INFO`);
+          for (const fromStart of x.hits) {
+            for (const fromEnd of fromStart.results) {
+              console.log(`  - Vocab: ${contextClozeOrStringToString(fromEnd.run)} INFO`);
+              const hits = fromEnd.results.slice(0, MAX_LINES);
+              const words = await jmdictIdsToWords(hits);
+              for (const [wi, w] of words.entries()) {
+                console.log('    - ' + hits[wi].search + ' | ' + displayWordLight(w, tags));
+              }
+              if (fromEnd.results.length > MAX_LINES) {
+                console.log(`    - (… ${fromEnd.results.length - MAX_LINES} omitted) INFO`);
+              }
             }
           }
         }

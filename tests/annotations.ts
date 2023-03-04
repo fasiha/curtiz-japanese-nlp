@@ -8,7 +8,7 @@ type Ugh<T> = (T extends(infer X)[] ? X : never)[];
 test('chatta', async t => {
   // in this sentence, Jdepp makes ことちゃった a bunsetsu
   const sentence = 'それは昨日のことちゃった';
-  const x = await annotate.handleSentence(sentence);
+  const x = (await annotate.handleSentence(sentence))[0];
   if (typeof x === 'string' || !x.clozes) { throw new Error('assert') }
   const conj = x.clozes?.conjugatedPhrases;
   const deconj = conj.map(o => o.deconj);
@@ -19,7 +19,7 @@ test('chatta', async t => {
 test('denwa suru', async t => {
   // in this sentence, Jdepp makes 電話 し ます a bunsetsu
   const sentence = '彼に電話します';
-  const res = await annotate.handleSentence(sentence);
+  const res = (await annotate.handleSentence(sentence))[0];
   if (typeof res === 'string' || !res.clozes) { throw new Error('assert') }
   const conj = res.clozes?.conjugatedPhrases;
   const deconj = conj.map(o => o.deconj);
@@ -29,7 +29,7 @@ test('denwa suru', async t => {
 });
 test('...da', async t => {
   const sentence = '買ったんだ';
-  const res = await annotate.handleSentence(sentence);
+  const res = (await annotate.handleSentence(sentence))[0];
   if (typeof res === 'string' || !res.clozes) { throw new Error('assert') }
   const conj = res.clozes.conjugatedPhrases;
   const deconj = conj.map(o => o.deconj);
@@ -44,7 +44,7 @@ test('...da', async t => {
 
 test('another suru verb', async t => {
   const sentence = 'お待ちしておりました';
-  const res = await annotate.handleSentence(sentence);
+  const res = (await annotate.handleSentence(sentence))[0];
   if (typeof res === 'string' || !res.clozes) { throw new Error('assert') }
   const conj = res.clozes.conjugatedPhrases;
   const deconj = conj.map(o => o.deconj);
@@ -55,7 +55,7 @@ test('another suru verb', async t => {
 
 test('adj+te', async t => {
   const sentence = 'ブラウンは急いで出かける';
-  const res = await annotate.handleSentence(sentence);
+  const res = (await annotate.handleSentence(sentence))[0];
   if (typeof res === 'string' || !res.clozes) { throw new Error('assert') }
   const conj = res.clozes.conjugatedPhrases;
   const deconj = conj.map(o => o.deconj);
@@ -66,7 +66,7 @@ test('adj+te', async t => {
 
 test('o+verb+suru needs suru', async t => {
   const sentence = 'その依頼お引き受けしましょう';
-  const res = await annotate.handleSentence(sentence);
+  const res = (await annotate.handleSentence(sentence))[0];
   if (typeof res === 'string' || !res.clozes) { throw new Error('assert') }
   const conj = res.clozes.conjugatedPhrases;
   const deconj = conj.map(o => o.deconj);

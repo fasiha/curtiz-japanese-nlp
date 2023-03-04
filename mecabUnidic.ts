@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const spawn = require('child_process').spawn;
-import {partitionBy, flatten} from 'curtiz-utils';
+const assert = require('assert')
+import{partitionBy, flatten} from 'curtiz-utils';
 
 // https://gist.github.com/masayu-a/e3eee0637c07d4019ec9 "prepared by Irena Srdanovic, 17.1.2013, checked by Ogiso, Den
 // and Maekawa"
@@ -250,12 +251,20 @@ const partOfSpeechObj = keysToObj(partOfSpeechKeys);
 const inflectionObj = keysToObj(inflectionKeys);
 const inflectionTypeObj = keysToObj(inflectionTypeKeys);
 
-export function invokeMecab(text: string): Promise<string> {
+export function invokeMecab(text: string, numBest: number = 1): Promise<string> {
   const native = !(process.env["NODE_MECAB"]);
+  const numBestArgs = numBest === 1 ? [] : ['-N', numBest.toString()];
   return new Promise((resolve, reject) => {
-    let spawned = native ? spawn('mecab', ['-d', '/opt/homebrew/lib/mecab/dic/unidic']) : spawn('npx', [
-      'mecab-emscripten-node', '-d', process.env["UNIDIC"] || '/opt/homebrew/lib/mecab/dic/unidic'
-    ].concat(process.env["MECABRC"] ? ['-r', process.env["MECABRC"] || '/usr/local/etc/mecabrc'] : []));
+    let spawned;
+    if (native) {
+      spawned = spawn('mecab', ['-d', '/opt/homebrew/lib/mecab/dic/unidic'].concat(numBestArgs))
+    } else {
+      const args =
+          ['mecab-emscripten-node', '-d', process.env["UNIDIC"] || '/opt/homebrew/lib/mecab/dic/unidic'].concat(
+              process.env["MECABRC"] ? ['-r', process.env["MECABRC"] || '/usr/local/etc/mecabrc'] : []);
+      args.push(...numBestArgs);
+      spawned = spawn('npx', args);
+    }
     spawned.stdin.write(text);
     spawned.stdin.write('\n'); // necessary, otherwise MeCab says `input-buffer overflow.`
     spawned.stdin.end();
@@ -319,11 +328,26 @@ export function parseMorpheme(raw: string[]): MaybeMorpheme {
   // throw new Error('Unexpected number of columns in MeCab Unidic output');
 }
 
-export function parseMecab(original: string, result: string) {
-  const pieces = result.trim().split('\n').map(line => parseMorpheme(line.split('\t')));
-  // split after each newline (null), just like text
-  const lines = partitionBy(pieces, (line, i, orig) => !!(i && orig && !orig[i - 1]));
-  return lines;
+/**
+ * Outermost nesting: sentence of input
+ * Middle nesting: 1 thru nBest
+ * Innermost nesting: morphemes of sentence
+ *
+ * I.e., `output[numSentence][numParsing][numMorpheme]`.
+ *
+ * If `nBest=1`, `output[0][1]` will not exist.
+ */
+export function parseMecab(rawMecab: string, nBest: number = 1) {
+  const sections = rawMecab.split('\nEOS').filter(s => !!s.trim());
+  assert(sections.length % nBest === 0)
+  const parsings = sections.map(parseMecabSection);
+  const parsingsPerSection = partitionBy(parsings, (_, i) => !(i! % nBest));
+  const rawPerSection = partitionBy(sections, (_, i) => !(i! % nBest));
+  return {morphemes: parsingsPerSection, raws: rawPerSection};
+}
+function isMorpheme(x: MaybeMorpheme): x is Morpheme { return !!x; }
+function parseMecabSection(result: string): Morpheme[] {
+  return result.split('\n').map(line => parseMorpheme(line.split('\t'))).filter(isMorpheme);
 }
 
 const MORPHEMESEP = '\t';
@@ -357,11 +381,6 @@ export function decompressMorphemes(s: string): MaybeMorpheme[] { return s.split
 export function goodMorphemePredicate(m: Morpheme): boolean {
   return !(m.partOfSpeech[0] === 'supplementary_symbol') &&
          !(m.partOfSpeech[0] === 'particle' && m.partOfSpeech[1] === 'phrase_final');
-}
-
-export async function parse(text: string): Promise<Morpheme[][]> {
-  const m = parseMecab(text, await invokeMecab(text.trim()));
-  return m.map(v => v.filter(x => x !== null) as Morpheme[])
 }
 
 if (require.main === module) {
@@ -399,21 +418,23 @@ if (require.main === module) {
                  .join('\n')
                  .replace(/\r/g, '');
     }
-    delete process.env["NODE_MECAB"];
-    const parsed = parseMecab(text, await invokeMecab(text.trim()));
-    // Output
-    const table = flatten(parsed.map(s => s.map(m => {
-      return m ? [m.literal, m.pronunciation, m.lemmaReading, m.lemma, m.partOfSpeech.join(ELEMENTSEP),
-                (m.inflectionType || []).join(ELEMENTSEP), (m.inflection || []).join(ELEMENTSEP)] : [];
-    })));
-    printMarkdownTable(table, 'Literal,Pron.,Lemma Read.,Lemma,PoS,Infl. Type,Infl.'.split(','));
-    {
-      const assert = require('assert');
-      process.env["NODE_MECAB"] = '1';
-
-      const parsedNode = parseMecab(text, await invokeMecab(text.trim()));
-      assert(parsedNode.map(ultraCompressMorphemes).join('\n') === parsed.map(ultraCompressMorphemes).join('\n'),
-             'Native MeCab and mecab-emscripten-node must produce same output');
+    let nBest = 1;
+    if (process.env['MECAB_NBEST']) {
+      const candidate = Number(process.env['MECAB_NBEST']);
+      if (candidate && isFinite(candidate) && candidate > 0) { nBest = candidate }
     }
+    // Output
+    const parseds = parseMecab(await invokeMecab(text.trim(), nBest), nBest);
+    for (const sentence of parseds.morphemes) {
+      for (const [n, parsed] of sentence.entries()) {
+        console.log(`\n# ${n + 1} parsing`)
+        const table = parsed.map(m => {
+          return m ? [m.literal, m.pronunciation, m.lemmaReading, m.lemma, m.partOfSpeech.join(ELEMENTSEP),
+                (m.inflectionType || []).join(ELEMENTSEP), (m.inflection || []).join(ELEMENTSEP)] : [];
+        })
+        printMarkdownTable(table, 'Literal,Pron.,Lemma Read.,Lemma,PoS,Infl. Type,Infl.'.split(','));
+      }
+    }
+    // DELETED WASM CHECK (mecab-emscripten-node)
   })();
 }

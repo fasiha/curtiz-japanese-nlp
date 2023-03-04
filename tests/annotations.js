@@ -26,7 +26,7 @@ tape_1.default('chatta', (t) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     // in this sentence, Jdepp makes ことちゃった a bunsetsu
     const sentence = 'それは昨日のことちゃった';
-    const x = yield annotate.handleSentence(sentence);
+    const x = (yield annotate.handleSentence(sentence))[0];
     if (typeof x === 'string' || !x.clozes) {
         throw new Error('assert');
     }
@@ -40,7 +40,7 @@ tape_1.default('denwa suru', (t) => __awaiter(void 0, void 0, void 0, function* 
     var _b;
     // in this sentence, Jdepp makes 電話 し ます a bunsetsu
     const sentence = '彼に電話します';
-    const res = yield annotate.handleSentence(sentence);
+    const res = (yield annotate.handleSentence(sentence))[0];
     if (typeof res === 'string' || !res.clozes) {
         throw new Error('assert');
     }
@@ -52,7 +52,7 @@ tape_1.default('denwa suru', (t) => __awaiter(void 0, void 0, void 0, function* 
 }));
 tape_1.default('...da', (t) => __awaiter(void 0, void 0, void 0, function* () {
     const sentence = '買ったんだ';
-    const res = yield annotate.handleSentence(sentence);
+    const res = (yield annotate.handleSentence(sentence))[0];
     if (typeof res === 'string' || !res.clozes) {
         throw new Error('assert');
     }
@@ -67,7 +67,7 @@ tape_1.default('...da', (t) => __awaiter(void 0, void 0, void 0, function* () {
 */
 tape_1.default('another suru verb', (t) => __awaiter(void 0, void 0, void 0, function* () {
     const sentence = 'お待ちしておりました';
-    const res = yield annotate.handleSentence(sentence);
+    const res = (yield annotate.handleSentence(sentence))[0];
     if (typeof res === 'string' || !res.clozes) {
         throw new Error('assert');
     }
@@ -79,7 +79,7 @@ tape_1.default('another suru verb', (t) => __awaiter(void 0, void 0, void 0, fun
 }));
 tape_1.default('adj+te', (t) => __awaiter(void 0, void 0, void 0, function* () {
     const sentence = 'ブラウンは急いで出かける';
-    const res = yield annotate.handleSentence(sentence);
+    const res = (yield annotate.handleSentence(sentence))[0];
     if (typeof res === 'string' || !res.clozes) {
         throw new Error('assert');
     }
@@ -92,7 +92,7 @@ tape_1.default('adj+te', (t) => __awaiter(void 0, void 0, void 0, function* () {
 tape_1.default('o+verb+suru needs suru', (t) => __awaiter(void 0, void 0, void 0, function* () {
     var _c;
     const sentence = 'その依頼お引き受けしましょう';
-    const res = yield annotate.handleSentence(sentence);
+    const res = (yield annotate.handleSentence(sentence))[0];
     if (typeof res === 'string' || !res.clozes) {
         throw new Error('assert');
     }

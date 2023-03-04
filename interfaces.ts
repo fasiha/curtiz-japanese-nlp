@@ -65,7 +65,7 @@ export interface AnalysisResult {
 }
 
 export const TFurigana = t.array(t.union([t.string, t.type({ruby: t.string, rt: t.string})]));
-export const PartialOverrides = t.partial({overrides: t.record(t.string, TFurigana)});
+export const PartialOverrides = t.partial({nBest: t.number, overrides: t.record(t.string, TFurigana)});
 export const v1ReqSentence = t.intersection([t.type({sentence: t.string}), PartialOverrides]);
 export const v1ReqSentences = t.intersection([t.type({sentences: t.array(t.string)}), PartialOverrides]);
 export type v1ResSentence = string|v1ResSentenceAnalyzed;
@@ -77,6 +77,7 @@ export interface v1ResSentenceAnalyzed {
   tags?: Record<string, string>;
   bunsetsus: Bunsetsu<Morpheme>[];
 }
+export type v1ResSentenceNbest = v1ResSentence[];
 
 export type SearchMapped<T> = {
   node: string,

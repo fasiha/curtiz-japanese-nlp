@@ -15,9 +15,12 @@ app.post('/api/v1/sentence', async (req, res) => {
     res.status(400).json('bad payload' + JSON.stringify(body.left));
     return;
   }
-  const {sentence, overrides} = body.right;
-  // const overrides = body.right
-  res.json(await handleSentence(sentence, overrides || {}, !!req.query.includeWord, !!req.query.includeClozes));
+  const {sentence, overrides = {}, nBest = 1} = body.right;
+  if (nBest < 1) {
+    res.status(400).json('nBest should be positive');
+    return;
+  }
+  res.json(await handleSentence(sentence, overrides, !!req.query.includeWord, !!req.query.includeClozes, nBest));
 });
 
 app.post('/api/v1/sentences', async (req, res) => {
@@ -29,7 +32,9 @@ app.post('/api/v1/sentences', async (req, res) => {
   const {sentences, overrides} = body.right;
   const resBody: v1ResSentence[] = [];
   for (const sentence of sentences) {
-    resBody.push(await handleSentence(sentence, overrides || {}, !!req.query.includeWord, !!req.query.includeClozes));
+    // don't handle MeCab nBest parsing here
+    resBody.push(
+        (await handleSentence(sentence, overrides || {}, !!req.query.includeWord, !!req.query.includeClozes))[0]);
   }
   res.json(resBody);
 });

@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const spawn = require('child_process').spawn;
+const assert = require('assert');
 const curtiz_utils_1 = require("curtiz-utils");
 // https://gist.github.com/masayu-a/e3eee0637c07d4019ec9 "prepared by Irena Srdanovic, 17.1.2013, checked by Ogiso, Den
 // and Maekawa"
@@ -261,12 +262,19 @@ function keysToObj(keys) {
 const partOfSpeechObj = keysToObj(partOfSpeechKeys);
 const inflectionObj = keysToObj(inflectionKeys);
 const inflectionTypeObj = keysToObj(inflectionTypeKeys);
-function invokeMecab(text) {
+function invokeMecab(text, numBest = 1) {
     const native = !(process.env["NODE_MECAB"]);
+    const numBestArgs = numBest === 1 ? [] : ['-N', numBest.toString()];
     return new Promise((resolve, reject) => {
-        let spawned = native ? spawn('mecab', ['-d', '/opt/homebrew/lib/mecab/dic/unidic']) : spawn('npx', [
-            'mecab-emscripten-node', '-d', process.env["UNIDIC"] || '/opt/homebrew/lib/mecab/dic/unidic'
-        ].concat(process.env["MECABRC"] ? ['-r', process.env["MECABRC"] || '/usr/local/etc/mecabrc'] : []));
+        let spawned;
+        if (native) {
+            spawned = spawn('mecab', ['-d', '/opt/homebrew/lib/mecab/dic/unidic'].concat(numBestArgs));
+        }
+        else {
+            const args = ['mecab-emscripten-node', '-d', process.env["UNIDIC"] || '/opt/homebrew/lib/mecab/dic/unidic'].concat(process.env["MECABRC"] ? ['-r', process.env["MECABRC"] || '/usr/local/etc/mecabrc'] : []);
+            args.push(...numBestArgs);
+            spawned = spawn('npx', args);
+        }
         spawned.stdin.write(text);
         spawned.stdin.write('\n'); // necessary, otherwise MeCab says `input-buffer overflow.`
         spawned.stdin.end();
@@ -328,13 +336,28 @@ function parseMorpheme(raw) {
     // throw new Error('Unexpected number of columns in MeCab Unidic output');
 }
 exports.parseMorpheme = parseMorpheme;
-function parseMecab(original, result) {
-    const pieces = result.trim().split('\n').map(line => parseMorpheme(line.split('\t')));
-    // split after each newline (null), just like text
-    const lines = curtiz_utils_1.partitionBy(pieces, (line, i, orig) => !!(i && orig && !orig[i - 1]));
-    return lines;
+/**
+ * Outermost nesting: sentence of input
+ * Middle nesting: 1 thru nBest
+ * Innermost nesting: morphemes of sentence
+ *
+ * I.e., `output[numSentence][numParsing][numMorpheme]`.
+ *
+ * If `nBest=1`, `output[0][1]` will not exist.
+ */
+function parseMecab(rawMecab, nBest = 1) {
+    const sections = rawMecab.split('\nEOS').filter(s => !!s.trim());
+    assert(sections.length % nBest === 0);
+    const parsings = sections.map(parseMecabSection);
+    const parsingsPerSection = curtiz_utils_1.partitionBy(parsings, (_, i) => !(i % nBest));
+    const rawPerSection = curtiz_utils_1.partitionBy(sections, (_, i) => !(i % nBest));
+    return { morphemes: parsingsPerSection, raws: rawPerSection };
 }
 exports.parseMecab = parseMecab;
+function isMorpheme(x) { return !!x; }
+function parseMecabSection(result) {
+    return result.split('\n').map(line => parseMorpheme(line.split('\t'))).filter(isMorpheme);
+}
 const MORPHEMESEP = '\t';
 const BUNSETSUSEP = '::';
 const ELEMENTSEP = '-';
@@ -372,13 +395,6 @@ function goodMorphemePredicate(m) {
         !(m.partOfSpeech[0] === 'particle' && m.partOfSpeech[1] === 'phrase_final');
 }
 exports.goodMorphemePredicate = goodMorphemePredicate;
-function parse(text) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const m = parseMecab(text, yield invokeMecab(text.trim()));
-        return m.map(v => v.filter(x => x !== null));
-    });
-}
-exports.parse = parse;
 if (require.main === module) {
     const readFile = require('fs').readFile;
     const promisify = require('util').promisify;
@@ -416,20 +432,26 @@ if (require.main === module) {
                     .join('\n')
                     .replace(/\r/g, '');
             }
-            delete process.env["NODE_MECAB"];
-            const parsed = parseMecab(text, yield invokeMecab(text.trim()));
-            // Output
-            const table = curtiz_utils_1.flatten(parsed.map(s => s.map(m => {
-                return m ? [m.literal, m.pronunciation, m.lemmaReading, m.lemma, m.partOfSpeech.join(ELEMENTSEP),
-                    (m.inflectionType || []).join(ELEMENTSEP), (m.inflection || []).join(ELEMENTSEP)] : [];
-            })));
-            printMarkdownTable(table, 'Literal,Pron.,Lemma Read.,Lemma,PoS,Infl. Type,Infl.'.split(','));
-            {
-                const assert = require('assert');
-                process.env["NODE_MECAB"] = '1';
-                const parsedNode = parseMecab(text, yield invokeMecab(text.trim()));
-                assert(parsedNode.map(ultraCompressMorphemes).join('\n') === parsed.map(ultraCompressMorphemes).join('\n'), 'Native MeCab and mecab-emscripten-node must produce same output');
+            let nBest = 1;
+            if (process.env['MECAB_NBEST']) {
+                const candidate = Number(process.env['MECAB_NBEST']);
+                if (candidate && isFinite(candidate) && candidate > 0) {
+                    nBest = candidate;
+                }
             }
+            // Output
+            const parseds = parseMecab(yield invokeMecab(text.trim(), nBest), nBest);
+            for (const sentence of parseds.morphemes) {
+                for (const [n, parsed] of sentence.entries()) {
+                    console.log(`\n# ${n + 1} parsing`);
+                    const table = parsed.map(m => {
+                        return m ? [m.literal, m.pronunciation, m.lemmaReading, m.lemma, m.partOfSpeech.join(ELEMENTSEP),
+                            (m.inflectionType || []).join(ELEMENTSEP), (m.inflection || []).join(ELEMENTSEP)] : [];
+                    });
+                    printMarkdownTable(table, 'Literal,Pron.,Lemma Read.,Lemma,PoS,Infl. Type,Infl.'.split(','));
+                }
+            }
+            // DELETED WASM CHECK (mecab-emscripten-node)
         });
     })();
 }

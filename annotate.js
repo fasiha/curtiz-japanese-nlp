@@ -30,12 +30,15 @@ exports.jmdictPromise = jmdict_simplified_node_1.setup(process.env['JMDICT_SIMPL
  * usefulness with this set to 20.
  */
 const DICTIONARY_LIMIT = 20;
-function mecabJdepp(sentence) {
+function mecabJdepp(sentence, nBest = 1) {
     return __awaiter(this, void 0, void 0, function* () {
-        let rawMecab = yield mecabUnidic_1.invokeMecab(sentence);
-        let morphemes = mecabUnidic_1.maybeMorphemesToMorphemes(mecabUnidic_1.parseMecab(sentence, rawMecab)[0].filter(o => !!o));
-        let bunsetsus = yield jdepp_1.addJdepp(rawMecab, morphemes);
-        return { morphemes, bunsetsus };
+        let rawMecab = yield mecabUnidic_1.invokeMecab(sentence, nBest);
+        let { morphemes: allSentencesMorphemes, raws: allSentencesRaws } = mecabUnidic_1.parseMecab(rawMecab, nBest);
+        // throw away multiple sentences, we're only going to pass in one (hopefully)
+        const morphemes = allSentencesMorphemes[0];
+        const raws = allSentencesRaws[0];
+        const bunsetsus = yield Promise.all(morphemes.map((attempt, idx) => jdepp_1.addJdepp(raws[idx], attempt)));
+        return morphemes.map((attempt, idx) => ({ morphemes: attempt, bunsetsus: bunsetsus[idx] }));
     });
 }
 exports.mecabJdepp = mecabJdepp;
@@ -804,40 +807,42 @@ const tagsPromise = exports.jmdictPromise.then(({ db }) => db)
     .then(raw => JSON.parse(raw));
 const kanjidicPromise = kanjidic_1.setupSimple();
 const wanikaniGraph = JSON.parse(fs_1.readFileSync('wanikani-kanji-graph.json', 'utf8'));
-function handleSentence(sentence, overrides = {}, includeWord = true, extractParticlesConj = true) {
+function handleSentence(sentence, overrides = {}, includeWord = true, extractParticlesConj = true, nBest = 1) {
     return __awaiter(this, void 0, void 0, function* () {
         if (!curtiz_utils_1.hasKanji(sentence) && !curtiz_utils_1.hasKana(sentence)) {
             const resBody = sentence;
-            return resBody;
+            return [resBody];
         }
-        const res = yield mecabJdepp(sentence);
-        const morphemes = res.morphemes;
-        const bunsetsus = res.bunsetsus;
-        const furigana = yield morphemesToFurigana(sentence, morphemes, overrides);
-        const tags = yield tagsPromise;
-        const dictHits = yield enumerateDictionaryHits(morphemes, true, 10);
-        for (let i = 0; i < dictHits.length; i++) {
-            for (let j = 0; j < dictHits[i].results.length; j++) {
-                const words = yield jmdictIdsToWords(dictHits[i].results[j].results);
-                for (let k = 0; k < words.length; k++) {
-                    dictHits[i].results[j].results[k].summary = displayWordLight(words[k], tags);
-                    if (includeWord) {
-                        dictHits[i].results[j].results[k].word = words[k];
+        const res = yield mecabJdepp(sentence, nBest);
+        return Promise.all(res.map((res) => __awaiter(this, void 0, void 0, function* () {
+            const morphemes = res.morphemes;
+            const bunsetsus = res.bunsetsus;
+            const furigana = yield morphemesToFurigana(sentence, morphemes, overrides);
+            const tags = yield tagsPromise;
+            const dictHits = yield enumerateDictionaryHits(morphemes, true, 10);
+            for (let i = 0; i < dictHits.length; i++) {
+                for (let j = 0; j < dictHits[i].results.length; j++) {
+                    const words = yield jmdictIdsToWords(dictHits[i].results[j].results);
+                    for (let k = 0; k < words.length; k++) {
+                        dictHits[i].results[j].results[k].summary = displayWordLight(words[k], tags);
+                        if (includeWord) {
+                            dictHits[i].results[j].results[k].word = words[k];
+                        }
                     }
                 }
             }
-        }
-        const kanjidic = yield kanjidicPromise;
-        const kanjidicHits = Object.fromEntries(sentence.split('')
-            .filter(c => c in kanjidic)
-            .map(c => [c, Object.assign(Object.assign({}, kanjidic[c]), { dependencies: searchMap(treeSearch(wanikaniGraph, c), c => (kanjidic[c] || null))
-                    .children })]));
-        let clozes = undefined;
-        if (extractParticlesConj) {
-            clozes = yield identifyFillInBlanks(bunsetsus.map(o => o.morphemes));
-        }
-        const resBody = { furigana, hits: dictHits, kanjidic: kanjidicHits, clozes, tags: includeWord ? tags : undefined, bunsetsus };
-        return resBody;
+            const kanjidic = yield kanjidicPromise;
+            const kanjidicHits = Object.fromEntries(sentence.split('')
+                .filter(c => c in kanjidic)
+                .map(c => [c, Object.assign(Object.assign({}, kanjidic[c]), { dependencies: searchMap(treeSearch(wanikaniGraph, c), c => (kanjidic[c] || null))
+                        .children })]));
+            let clozes = undefined;
+            if (extractParticlesConj) {
+                clozes = yield identifyFillInBlanks(bunsetsus.map(o => o.morphemes));
+            }
+            const resBody = { furigana, hits: dictHits, kanjidic: kanjidicHits, clozes, tags: includeWord ? tags : undefined, bunsetsus };
+            return resBody;
+        })));
     });
 }
 exports.handleSentence = handleSentence;
@@ -864,32 +869,34 @@ if (module === require.main) {
         for (const line of ['トカゲの尻尾切り',
         ]) {
             console.log('\n===\n');
-            const x = yield handleSentence(line);
-            if (typeof x === 'string') {
-                continue;
-            }
-            console.log('conj');
-            p((_a = x.clozes) === null || _a === void 0 ? void 0 : _a.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')));
-            console.log('deconj');
-            console.dir((_b = x.clozes) === null || _b === void 0 ? void 0 : _b.conjugatedPhrases.map(o => o.deconj.map(m => renderDeconjugation(m))), { depth: null });
-            // console.log('particles')
-            // console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]))
-            // p(x.particlesConjphrases.particles.map(o => o.chino))
-            const SHOW_HITS = false;
-            if (SHOW_HITS) {
-                const MAX_LINES = 10000;
-                const { db } = yield exports.jmdictPromise;
-                const tags = JSON.parse(yield jmdict_simplified_node_1.getField(db, 'tags'));
-                for (const fromStart of x.hits) {
-                    for (const fromEnd of fromStart.results) {
-                        console.log(`  - Vocab: ${contextClozeOrStringToString(fromEnd.run)} INFO`);
-                        const hits = fromEnd.results.slice(0, MAX_LINES);
-                        const words = yield jmdictIdsToWords(hits);
-                        for (const [wi, w] of words.entries()) {
-                            console.log('    - ' + hits[wi].search + ' | ' + displayWordLight(w, tags));
-                        }
-                        if (fromEnd.results.length > MAX_LINES) {
-                            console.log(`    - (… ${fromEnd.results.length - MAX_LINES} omitted) INFO`);
+            const xs = yield handleSentence(line);
+            for (const x of xs) {
+                if (typeof x === 'string') {
+                    continue;
+                }
+                console.log('conj');
+                p((_a = x.clozes) === null || _a === void 0 ? void 0 : _a.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')));
+                console.log('deconj');
+                console.dir((_b = x.clozes) === null || _b === void 0 ? void 0 : _b.conjugatedPhrases.map(o => o.deconj.map(m => renderDeconjugation(m))), { depth: null });
+                // console.log('particles')
+                // console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]))
+                // p(x.particlesConjphrases.particles.map(o => o.chino))
+                const SHOW_HITS = false;
+                if (SHOW_HITS) {
+                    const MAX_LINES = 10000;
+                    const { db } = yield exports.jmdictPromise;
+                    const tags = JSON.parse(yield jmdict_simplified_node_1.getField(db, 'tags'));
+                    for (const fromStart of x.hits) {
+                        for (const fromEnd of fromStart.results) {
+                            console.log(`  - Vocab: ${contextClozeOrStringToString(fromEnd.run)} INFO`);
+                            const hits = fromEnd.results.slice(0, MAX_LINES);
+                            const words = yield jmdictIdsToWords(hits);
+                            for (const [wi, w] of words.entries()) {
+                                console.log('    - ' + hits[wi].search + ' | ' + displayWordLight(w, tags));
+                            }
+                            if (fromEnd.results.length > MAX_LINES) {
+                                console.log(`    - (… ${fromEnd.results.length - MAX_LINES} omitted) INFO`);
+                            }
                         }
                     }
                 }
