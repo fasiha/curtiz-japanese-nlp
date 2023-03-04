@@ -4,7 +4,7 @@ export function invokeJdepp(line: string): Promise<string> {
   return new Promise((resolve, reject) => {
     let spawned = spawn('jdepp');
     spawned.stdin.write(line);
-    spawned.stdin.write('\n'); // necessary, otherwise MeCab says `input-buffer overflow.`
+    spawned.stdin.write('\nEOS\n');
     spawned.stdin.end();
     let arr: string[] = [];
     spawned.stdout.on('data', (data: Buffer) => arr.push(data.toString('utf8')));
