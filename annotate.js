@@ -281,7 +281,9 @@ function morphemesToConjPhrases(startIdx, goodBunsetsu, fullCloze, verbose = fal
                     if (typeof lemma === 'string') {
                         continue;
                     }
-                    const { ruby, rt } = lemma;
+                    const { rt } = lemma;
+                    // As above, the lemma is sometimes too detailed: "引く-他動詞"
+                    const ruby = lemma.ruby.split('-')[0];
                     // Replace the kanji in the dictionary form if it's not in the literal cloze
                     if (!cloze.includes(ruby)) {
                         dictionaryForm = dictionaryForm.replace(ruby, rt);
@@ -866,7 +868,7 @@ if (module === require.main) {
     }
     (() => __awaiter(void 0, void 0, void 0, function* () {
         var _a, _b;
-        for (const line of ['トカゲの尻尾切り',
+        for (const line of ['かぜひいた',
         ]) {
             console.log('\n===\n');
             const xs = yield handleSentence(line);

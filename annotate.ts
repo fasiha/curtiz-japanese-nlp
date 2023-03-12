@@ -340,7 +340,9 @@ async function morphemesToConjPhrases(startIdx: number, goodBunsetsu: Morpheme[]
       // deconjugate won't find anything. Look at lemmas and try to kana-ify the dictionaryForm
       for (const lemma of lemmas.flat()) {
         if (typeof lemma === 'string') { continue; }
-        const {ruby, rt} = lemma;
+        const {rt} = lemma;
+        // As above, the lemma is sometimes too detailed: "引く-他動詞"
+        const ruby = lemma.ruby.split('-')[0];
         // Replace the kanji in the dictionary form if it's not in the literal cloze
         if (!cloze.includes(ruby)) { dictionaryForm = dictionaryForm.replace(ruby, rt); }
       }
@@ -904,7 +906,7 @@ if (module === require.main) {
   (async () => {
     for (
         const line of
-            ['トカゲの尻尾切り',
+            ['かぜひいた',
              // ブラックシャドー団は集団で盗みを行う窃盗団でお金持ちの家を狙い、家にある物全て根こそぎ盗んでいきます。',
              // 'お待ちしておりました',
              // '買ったんだ',
