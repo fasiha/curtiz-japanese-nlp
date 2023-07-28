@@ -83,7 +83,7 @@ First, make sure you have [Git](https://git-scm.com) and [Node.js](https://nodej
 Then install MeCab, Unidic, and J.DepP. MeCab and Unidic are easy to install on macOS via [Homebrew](https://brew.sh/), but [J.DepP](https://www.tkl.iis.u-tokyo.ac.jp/~ynaga/jdepp/) is a "normal" old-school Unix C++ build (`./configure --with-mecab-dict=UNI && make`…; `./configure --help` is useful and explains what `with-mecab-dict` is doing) and if you've never built such a project before, do your best to follow the instructions and open an issue if you need help.
 
 Then, download the followed required files (TODO: automatically download these!):
-1. `jmdict-eng-3.1.0.json` from [JMdict-Simplified](https://github.com/scriptin/jmdict-simplified)
+1. `jmdict-eng-*.json` from [JMdict-Simplified](https://github.com/scriptin/jmdict-simplified)
 2. `JmdictFurigana.json` from [JMdict-Furigana](https://github.com/Doublevil/JmdictFurigana)
 3. `kanjidic2.xml.gz` from [Kanjidic](http://www.edrdg.org/wiki/index.php/KANJIDIC_Project)
 
@@ -101,7 +101,8 @@ If you plan to interact with Curtiz just through a JSON web server, the easiest 
 3. Put the three dependency files into this directory
 4. `npm init -y` will initialize an empty Node.js package
 5. `npm i https://github.com/fasiha/curtiz-japanese-nlp` will install Curtiz as a dependency
-6. `npm run start` will start the webserver on http://127.0.0.1:8133 (you can pick another port, for example 8888, via `PORT=8888 npm run start`)
+6. `npx curtiz-annotate-server` will start the webserver on http://127.0.0.1:8133 (you can pick another port, for example 8888, via `PORT=8888 npx curtiz-annotate-server`)
+7. (N.B. If you have multiple copies/versions of `jmdict-simplified`, you can specify the one to use with an environment variable `JMDICT_SIMPLIFIED_JSON=./jmdict-eng-3.5.0.json npx curtiz-annotate-server`. Environment variables stack so you can provide both this and the port: `PORT=8888 JMDICT_SIMPLIFIED_JSON=./jmdict-eng-3.5.0.json npx curtiz-annotate-server`)
 
 The first time you run this, it will take several seconds while it builds a Leveldb cache of JMdict.
 

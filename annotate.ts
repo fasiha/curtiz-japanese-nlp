@@ -8,7 +8,7 @@ import {
   hasKanji,
   kata2hira
 } from 'curtiz-utils'
-import {readFileSync} from 'fs';
+import {readdirSync, readFileSync} from 'fs';
 import {Entry, Furigana, JmdictFurigana, Ruby, setup as setupJmdictFurigana} from 'jmdict-furigana-node';
 import {
   getField,
@@ -23,6 +23,7 @@ import {
   Xref,
 } from 'jmdict-simplified-node';
 import {adjDeconjugate, AdjDeconjugated, Deconjugated, verbDeconjugate} from 'kamiya-codec';
+import path from 'path';
 
 import {lookup} from './chino-particles';
 import {
@@ -51,8 +52,14 @@ export {
 export {getField} from 'jmdict-simplified-node';
 
 export const jmdictFuriganaPromise = setupJmdictFurigana(process.env['JMDICT_FURIGANA']);
-export const jmdictPromise = setupJmdict(process.env['JMDICT_SIMPLIFIED_LEVELDB'] || 'jmdict-simplified',
-                                         process.env['JMDICT_SIMPLIFIED_JSON'] || 'jmdict-eng-3.1.0.json', true, true);
+export const jmdictPromise = setupJmdict(
+    process.env['JMDICT_SIMPLIFIED_LEVELDB'] || 'jmdict-simplified',
+    process.env['JMDICT_SIMPLIFIED_JSON'] ||
+        readdirSync('.').sort().reverse().find(s => s.startsWith('jmdict-eng') && s.endsWith('.json')) ||
+        'jmdict-eng-3.1.0.json',
+    true,
+    true,
+);
 
 /**
  * Without this limit on how many Leveldb hits jmdict-simplified-node will get, things slow way down. Not much loss in
@@ -836,7 +843,7 @@ const tagsPromise = jmdictPromise.then(({db}) => db)
 const kanjidicPromise = kanjidicSetup();
 
 const wanikaniGraph: {[k: string]: string[]}&{metadata: Record<string, string>} =
-    JSON.parse(readFileSync('wanikani-kanji-graph.json', 'utf8'));
+    JSON.parse(readFileSync(path.join(__dirname, 'wanikani-kanji-graph.json'), 'utf8'));
 
 export async function handleSentence(sentence: string, overrides: Record<string, Furigana[]> = {}, includeWord = true,
                                      extractParticlesConj = true, nBest = 1): Promise<v1ResSentenceNbest> {

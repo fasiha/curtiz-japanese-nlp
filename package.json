@@ -54,5 +54,14 @@
     "node-gzip": "^1.1.2",
     "xml2js": "^0.4.23"
   },
-  "repository": "github:fasiha/curtiz-japanese-nlp"
+  "repository": "github:fasiha/curtiz-japanese-nlp",
+  "bin": {
+    "curtiz-annotate-server": "./annotateServer.js"
+  },
+  "files": [
+    "*.js",
+    "*.ts",
+    "wanikani-kanji-graph.json",
+    "chino-all-about-particles.txt"
+  ]
 }
