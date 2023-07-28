@@ -127,6 +127,8 @@ curtiz.handleSentence('それは昨日のことちゃった').then(result => con
 > (If you're using TypeScript, (1) make sure you compile this, e.g., `npx tsc -p .` and run the resulting `demo.js`. Also (2), you may need your `tsconfig.json` to `"target": "es2019"` or later.)
 >
 > Make sure you have the three dependency files above in your project head (JMdict-Furigana, JMdict-Simplified, and Kanjidic). The first time you run this, Curtiz will spend several seconds building a Leveldb cache for JMdict and will log its progress.
+>
+> Note that because Leveldb is not multithreaded, you can't run this if you're also running the web server above 😒. If you see an error like `Error [OpenError]: IO error: lock jmdict-simplified/LOCK: Resource temporarily unavailable`, this is Leveldb complaining that some other process has a lock on the database. I should fix this…
 
 This will print out a *lot* of text, but it will show you everything that Curtiz has done with the sentence.
 
