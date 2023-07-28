@@ -118,16 +118,16 @@ curl --data '{"sentence": "へましたらリーダーに切られるだけ"}' \
 As described below, I need to formally describe the structure of this data. In the meantime, please check the [tests](./tests) and the [TypeScript interfaces](./interfaces.ts), especially the `v1ResSentenceAnalyzed` type, to see what data is where.
 
 ## API
-In your Node project, import Curtiz with
+In your Node project, create a new file (either TypeScript `demo.ts` or ESM `demo.mjs`). Put the following code into it to import and exercise the package:
 ```ts
+// TypeScript or ESM (e.g., `demo.ts` or `demo.mjs`)
 import * as curtiz from 'curtiz-japanese-nlp';
-```
-Make sure you have the three dependency files above in your project head. The first time you run this, Curtiz will spend several seconds building a Leveldb cache for JMdict and will log its progress.
-
-Then you can run the following:
-```ts
 curtiz.handleSentence('それは昨日のことちゃった').then(result => console.dir(result, {depth: null}));
 ```
+> (If you're using TypeScript, (1) make sure you compile this, e.g., `npx tsc -p .` and run the resulting `demo.js`. Also (2), you may need your `tsconfig.json` to `"target": "es2019"` or later.)
+>
+> Make sure you have the three dependency files above in your project head (JMdict-Furigana, JMdict-Simplified, and Kanjidic). The first time you run this, Curtiz will spend several seconds building a Leveldb cache for JMdict and will log its progress.
+
 This will print out a *lot* of text, but it will show you everything that Curtiz has done with the sentence.
 
 More details forthcoming but please check the [tests](./tests) and the [TypeScript interfaces](./interfaces.ts), especially the `v1ResSentenceAnalyzed` type, to see what data is where.
