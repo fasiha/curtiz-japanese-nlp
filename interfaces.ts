@@ -8,15 +8,7 @@ import {SimpleCharacter} from './kanjidic';
 import {Morpheme} from './mecabUnidic';
 
 export type{Furigana, Ruby} from "jmdict-furigana-node";
-export type{
-  Gloss,
-  Kana,
-  Kanji,
-  Sense,
-  Source,
-  Word,
-  Xref,
-} from "jmdict-simplified-node/interfaces";
+export type * from "jmdict-simplified-node/interfaces";
 export type{Morpheme} from './mecabUnidic';
 
 export interface ScoreHit {

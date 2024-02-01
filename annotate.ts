@@ -41,6 +41,8 @@ import {addJdepp, Bunsetsu} from './jdepp';
 import {setupSimple as kanjidicSetup, SimpleCharacter} from './kanjidic';
 import {invokeMecab, maybeMorphemesToMorphemes, Morpheme, parseMecab} from './mecabUnidic';
 
+export type * from './interfaces';
+
 export {
   Entry,
   Furigana,
