@@ -1,4 +1,7 @@
 "use strict";
+function __export(m) {
+    for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];
+}
 var __importStar = (this && this.__importStar) || function (mod) {
     if (mod && mod.__esModule) return mod;
     var result = {};
@@ -8,6 +11,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const t = __importStar(require("io-ts"));
+__export(require("jmdict-simplified-node/interfaces"));
 exports.TFurigana = t.array(t.union([t.string, t.type({ ruby: t.string, rt: t.string })]));
 exports.PartialOverrides = t.partial({ nBest: t.number, overrides: t.record(t.string, exports.TFurigana) });
 exports.v1ReqSentence = t.intersection([t.type({ sentence: t.string }), exports.PartialOverrides]);

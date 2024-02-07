@@ -41,7 +41,7 @@ import {addJdepp, Bunsetsu} from './jdepp';
 import {setupSimple as kanjidicSetup, SimpleCharacter} from './kanjidic';
 import {invokeMecab, maybeMorphemesToMorphemes, Morpheme, parseMecab} from './mecabUnidic';
 
-export type * from './interfaces';
+export * from './interfaces';
 
 export {
   Entry,
@@ -150,6 +150,7 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
             wordId: w.id,
             score: scoreMorphemeWord(run, searches[i], searchKey, w),
             search: searches[i],
+            tags: {}
             // run: runLiteral,
             // runIdx: [startIdx, endIdx - 1],
           };
@@ -196,7 +197,7 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
             const search = all[idx];
             for (const w of hits) {
               const score = scoreMorphemeWord([m], search, key, w)
-              scored.push({wordId: w.id, score, search});
+              scored.push({wordId: w.id, score, search, tags: {}});
             }
           }
         }
@@ -866,7 +867,16 @@ export async function handleSentence(sentence: string, overrides: Record<string,
         const words = await jmdictIdsToWords(dictHits[i].results[j].results);
         for (let k = 0; k < words.length; k++) {
           dictHits[i].results[j].results[k].summary = displayWordLight(words[k], tags);
-          if (includeWord) { dictHits[i].results[j].results[k].word = words[k]; }
+          if (includeWord) {
+            const word = words[k]
+            dictHits[i].results[j].results[k].word = word;
+
+            const thisTag = dictHits[i].results[j].results[k].tags;
+            for (const tag of word.sense.flatMap(s =>
+                                                     s.field.concat(s.dialect).concat(s.misc).concat(s.partOfSpeech))) {
+              thisTag[tag] = tags[tag];
+            }
+          }
         }
       }
     }

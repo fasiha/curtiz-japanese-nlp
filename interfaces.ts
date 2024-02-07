@@ -8,7 +8,7 @@ import {SimpleCharacter} from './kanjidic';
 import {Morpheme} from './mecabUnidic';
 
 export type{Furigana, Ruby} from "jmdict-furigana-node";
-export type * from "jmdict-simplified-node/interfaces";
+export * from "jmdict-simplified-node/interfaces";
 export type{Morpheme} from './mecabUnidic';
 
 export interface ScoreHit {
@@ -17,6 +17,7 @@ export interface ScoreHit {
   search: string;
   summary?: string;
   word?: Word;
+  tags: Record<string, string>
 }
 export interface ScoreHits {
   startIdx: number;

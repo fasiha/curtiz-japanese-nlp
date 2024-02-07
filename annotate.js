@@ -8,6 +8,9 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+function __export(m) {
+    for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];
+}
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -22,6 +25,7 @@ const chino_particles_1 = require("./chino-particles");
 const jdepp_1 = require("./jdepp");
 const kanjidic_1 = require("./kanjidic");
 const mecabUnidic_1 = require("./mecabUnidic");
+__export(require("./interfaces"));
 var jmdict_furigana_node_2 = require("jmdict-furigana-node");
 exports.furiganaToString = jmdict_furigana_node_2.furiganaToString;
 exports.setupJmdictFurigana = jmdict_furigana_node_2.setup;
@@ -101,6 +105,9 @@ function enumerateDictionaryHits(plainMorphemes, full = true, limit = -1) {
                             wordId: w.id,
                             score: scoreMorphemeWord(run, searches[i], searchKey, w),
                             search: searches[i],
+                            tags: {}
+                            // run: runLiteral,
+                            // runIdx: [startIdx, endIdx - 1],
                         };
                         return ret;
                     })));
@@ -138,7 +145,7 @@ function enumerateDictionaryHits(plainMorphemes, full = true, limit = -1) {
                             const search = all[idx];
                             for (const w of hits) {
                                 const score = scoreMorphemeWord([m], search, key, w);
-                                scored.push({ wordId: w.id, score, search });
+                                scored.push({ wordId: w.id, score, search, tags: {} });
                             }
                         }
                     }
@@ -834,7 +841,12 @@ function handleSentence(sentence, overrides = {}, includeWord = true, extractPar
                     for (let k = 0; k < words.length; k++) {
                         dictHits[i].results[j].results[k].summary = displayWordLight(words[k], tags);
                         if (includeWord) {
-                            dictHits[i].results[j].results[k].word = words[k];
+                            const word = words[k];
+                            dictHits[i].results[j].results[k].word = word;
+                            const thisTag = dictHits[i].results[j].results[k].tags;
+                            for (const tag of word.sense.flatMap(s => s.field.concat(s.dialect).concat(s.misc).concat(s.partOfSpeech))) {
+                                thisTag[tag] = tags[tag];
+                            }
                         }
                     }
                 }
