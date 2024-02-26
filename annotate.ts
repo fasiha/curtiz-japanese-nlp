@@ -13,6 +13,7 @@ import {Entry, Furigana, JmdictFurigana, Ruby, setup as setupJmdictFurigana} fro
 import {
   getField,
   getTags as getTagsDb,
+  getXrefs,
   idsToWords,
   kanjiBeginning,
   readingBeginning,
@@ -213,6 +214,23 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
                                                           runLiteralCore, bunsetsuToString(morphemes.slice(endIdx))));
 
         results.push({endIdx, run: runLiteral, results: dedupeLimit(scored, o => o.wordId, limit)});
+      }
+    }
+    {
+      // add relateds
+      for (const r of results) {
+        const words = await jmdictIdsToWords(r.results);
+        const xrefs = words.flatMap(w => w.sense.flatMap(s => s.related));
+        const references = await Promise.all(xrefs.flatMap(x => getXrefs(db, x)));
+
+        const seen = new Set(r.results.map(r => r.wordId));
+        for (const outer of references) {
+          for (const word of outer) {
+            if (seen.has(word.id)) { continue; }
+            seen.add(word.id);
+            r.results.push({wordId: word.id, score: 0, search: '(xref)', tags: {}})
+          }
+        }
       }
     }
     superhits.push({startIdx, results});

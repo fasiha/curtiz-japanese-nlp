@@ -159,6 +159,24 @@ function enumerateDictionaryHits(plainMorphemes, full = true, limit = -1) {
                     results.push({ endIdx, run: runLiteral, results: curtiz_utils_1.dedupeLimit(scored, o => o.wordId, limit) });
                 }
             }
+            {
+                // add relateds
+                for (const r of results) {
+                    const words = yield jmdictIdsToWords(r.results);
+                    const xrefs = words.flatMap(w => w.sense.flatMap(s => s.related));
+                    const references = yield Promise.all(xrefs.flatMap(x => jmdict_simplified_node_1.getXrefs(db, x)));
+                    const seen = new Set(r.results.map(r => r.wordId));
+                    for (const outer of references) {
+                        for (const word of outer) {
+                            if (seen.has(word.id)) {
+                                continue;
+                            }
+                            seen.add(word.id);
+                            r.results.push({ wordId: word.id, score: 0, search: '(xref)', tags: {} });
+                        }
+                    }
+                }
+            }
             superhits.push({ startIdx, results });
         }
         return superhits;
