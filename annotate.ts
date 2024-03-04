@@ -687,7 +687,7 @@ export async function morphemesToFuriganaCore(morphemes: Morpheme[],
         // no hit found, kanji won't shrink to empty, break now
         break;
       }
-      if (kanji.length === 0) { return annotatedChars; }
+      if (kanji.length === 0) { return annotatedChars.filter(x => x !== ''); }
     }
     // const lemmaReadingHit = search(readingToEntry, lemmaReading, 'text', lemma);
     // if (lemmaReadingHit) { return lemmaReadingHit.furigana; }
@@ -940,7 +940,7 @@ if (module === require.main) {
   (async () => {
     for (
         const line of
-            ['かぜひいた',
+            ['手伝って',
              // ブラックシャドー団は集団で盗みを行う窃盗団でお金持ちの家を狙い、家にある物全て根こそぎ盗んでいきます。',
              // 'お待ちしておりました',
              // '買ったんだ',
@@ -956,6 +956,7 @@ if (module === require.main) {
       const xs = await handleSentence(line);
       for (const x of xs) {
         if (typeof x === 'string') { continue }
+        console.log(x.furigana)
         console.log('conj')
         p(x.clozes?.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')))
         console.log('deconj')

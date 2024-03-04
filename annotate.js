@@ -647,7 +647,7 @@ function morphemesToFuriganaCore(morphemes, overrides) {
                     break;
                 }
                 if (kanji.length === 0) {
-                    return annotatedChars;
+                    return annotatedChars.filter(x => x !== '');
                 }
             }
             // const lemmaReadingHit = search(readingToEntry, lemmaReading, 'text', lemma);
@@ -899,7 +899,7 @@ if (module === require.main) {
     }
     (() => __awaiter(void 0, void 0, void 0, function* () {
         var _a, _b;
-        for (const line of ['かぜひいた',
+        for (const line of ['手伝って',
         ]) {
             console.log('\n===\n');
             const xs = yield handleSentence(line);
@@ -907,6 +907,7 @@ if (module === require.main) {
                 if (typeof x === 'string') {
                     continue;
                 }
+                console.log(x.furigana);
                 console.log('conj');
                 p((_a = x.clozes) === null || _a === void 0 ? void 0 : _a.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')));
                 console.log('deconj');
