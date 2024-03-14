@@ -279,6 +279,10 @@ function morphemesToConjPhrases(startIdx, goodBunsetsu, fullCloze, verbose = fal
         const jf = yield exports.jmdictFuriganaPromise;
         const lemmas = goodBunsetsu.map(o => {
             const entries = jf.textToEntry.get(o.lemma) || [];
+            if (o.lemma.endsWith('-他動詞') && o.partOfSpeech[0] === 'verb') {
+                // sometimes ("ひいた" in "かぜひいた"), UniDic lemmas are weird like "引く-他動詞" eyeroll
+                entries.push(...(jf.textToEntry.get(o.lemma.replace('-他動詞', '')) || []));
+            }
             const lemmaReading = curtiz_utils_1.kata2hira(o.lemmaReading);
             const entry = entries.find(e => e.reading === lemmaReading);
             return entry ? entry.furigana : o.lemma === lemmaReading ? [lemmaReading] : [{ ruby: o.lemma, rt: lemmaReading }];
@@ -899,7 +903,7 @@ if (module === require.main) {
     }
     (() => __awaiter(void 0, void 0, void 0, function* () {
         var _a, _b;
-        for (const line of ['手伝って',
+        for (const line of ['かぜひいた',
         ]) {
             console.log('\n===\n');
             const xs = yield handleSentence(line);

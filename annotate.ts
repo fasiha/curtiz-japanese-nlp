@@ -335,6 +335,10 @@ async function morphemesToConjPhrases(startIdx: number, goodBunsetsu: Morpheme[]
 
   const lemmas = goodBunsetsu.map(o => {
     const entries = jf.textToEntry.get(o.lemma) || [];
+    if (o.lemma.endsWith('-他動詞') && o.partOfSpeech[0] === 'verb') {
+      // sometimes ("ひいた" in "かぜひいた"), UniDic lemmas are weird like "引く-他動詞" eyeroll
+      entries.push(...(jf.textToEntry.get(o.lemma.replace('-他動詞', '')) || []))
+    }
     const lemmaReading = kata2hira(o.lemmaReading);
     const entry = entries.find(e => e.reading === lemmaReading);
     return entry ? entry.furigana : o.lemma === lemmaReading ? [lemmaReading] : [{ruby: o.lemma, rt: lemmaReading}];
@@ -940,7 +944,7 @@ if (module === require.main) {
   (async () => {
     for (
         const line of
-            ['手伝って',
+            ['かぜひいた',
              // ブラックシャドー団は集団で盗みを行う窃盗団でお金持ちの家を狙い、家にある物全て根こそぎ盗んでいきます。',
              // 'お待ちしておりました',
              // '買ったんだ',
