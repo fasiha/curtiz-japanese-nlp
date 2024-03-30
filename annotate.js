@@ -167,7 +167,7 @@ function enumerateDictionaryHits(plainMorphemes, full = true, limit = -1) {
                     const references = yield Promise.all(xrefs.flatMap(x => jmdict_simplified_node_1.getXrefs(db, x).then(refs => ({ refs, xref: x }))));
                     for (const { refs, xref } of references) {
                         for (const word of refs) {
-                            r.results.push({ wordId: word.id, score: 0, search: JSON.stringify({ xref }), tags: {} });
+                            r.results.push({ wordId: word.id, score: 0, search: JSON.stringify({ xref }), tags: {}, isXref: true });
                         }
                     }
                 }

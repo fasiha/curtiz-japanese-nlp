@@ -17,7 +17,8 @@ export interface ScoreHit {
   search: string;
   summary?: string;
   word?: Word;
-  tags: Record<string, string>
+  tags: Record<string, string>;
+  isXref?: boolean;
 }
 export interface ScoreHits {
   startIdx: number;
