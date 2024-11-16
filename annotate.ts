@@ -27,6 +27,7 @@ import {adjDeconjugate, AdjDeconjugated, Deconjugated, verbDeconjugate} from 'ka
 import path from 'path';
 
 import {lookup} from './chino-particles';
+import {readingBeginning as readingBeginningCustom} from './customDictionary';
 import {
   ConjugatedPhrase,
   ContextCloze,
@@ -151,7 +152,8 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
             wordId: w.id,
             score: scoreMorphemeWord(run, searches[i], searchKey, w),
             search: searches[i],
-            tags: {}
+            tags: {},
+            word: w
             // run: runLiteral,
             // runIdx: [startIdx, endIdx - 1],
           };
@@ -164,8 +166,10 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
         // Consider searching rendaku above for non-initial morphemes? It'd be nice if "猿ちえお" (saru chi e o) found
         // "猿知恵" (さるぢえ・さるじえ)
 
-        const readingSubhits =
-            await Promise.all(readingSearches.map(search => readingBeginning(db, search, DICTIONARY_LIMIT)));
+        const readingSubhits: Word[][] = await Promise.all(readingSearches.map(
+            search =>
+                Promise.all([readingBeginning(db, search, DICTIONARY_LIMIT), readingBeginningCustom(null, search)])
+                    .then(([a, b]) => [...a, ...b])));
         scored.push(...helperSearchesHitsToScored(readingSearches, readingSubhits, 'kana'));
       }
       // Search literals if needed, this works around MeCab mis-readings like お父さん->おちちさん
@@ -844,9 +848,12 @@ function checkFurigana(sentence: string, furigana: Furigana[][]): Furigana[][] {
 }
 function toruby(f: Furigana) { return typeof f === 'string' ? f : f.ruby; }
 
-export async function jmdictIdsToWords(hits: {wordId: string}[]) {
+export async function jmdictIdsToWords(searches: {wordId: string, word?: Word}[]): Promise<Word[]> {
   const {db} = await jmdictPromise;
-  return idsToWords(db, hits.map(o => o.wordId));
+  const missingWord = searches.filter(x => !x.word);
+  const missingWordsFound = await idsToWords(db, missingWord.map(o => o.wordId));
+  let i = 0;
+  return searches.map(x => x.word ? x.word : missingWordsFound[i++])
 }
 
 export async function getTags() { return jmdictPromise.then(({db}) => getTagsDb(db)) }
