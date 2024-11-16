@@ -156,7 +156,6 @@ async function enumerateDictionaryHits(plainMorphemes, full = true, limit = -1) 
         {
             // add relateds
             for (const r of results) {
-                console.log("WHEE", r.results);
                 const words = await jmdictIdsToWords(r.results);
                 const xrefs = words.flatMap(w => w.sense.flatMap(s => s.related));
                 const references = await Promise.all(xrefs.flatMap(x => jmdict_simplified_node_1.getXrefs(db, x).then(refs => ({ refs, xref: x }))));
@@ -803,7 +802,6 @@ function toruby(f) { return typeof f === 'string' ? f : f.ruby; }
 async function jmdictIdsToWords(searches) {
     const { db } = await exports.jmdictPromise;
     const missingWord = searches.filter(x => !x.word);
-    console.log('MISSING', missingWord);
     const missingWordsFound = await jmdict_simplified_node_1.idsToWords(db, missingWord.map(o => o.wordId));
     let i = 0;
     return searches.map(x => x.word ? x.word : missingWordsFound[i++]);

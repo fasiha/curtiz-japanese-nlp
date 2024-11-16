@@ -23,14 +23,7 @@ app.post('/api/v1/sentence', async (req, res) => {
         res.status(400).json('nBest should be positive');
         return;
     }
-    try {
-        res.json(await annotate_1.handleSentence(sentence, overrides, !!req.query.includeWord, !!req.query.includeClozes, nBest));
-    }
-    catch (e) {
-        console.error('ERROR FOUND', e.stack);
-        console.error(e);
-        res.status(500).json(e);
-    }
+    res.json(await annotate_1.handleSentence(sentence, overrides, !!req.query.includeWord, !!req.query.includeClozes, nBest));
 });
 app.post('/api/v1/sentences', async (req, res) => {
     const body = interfaces_1.v1ReqSentences.decode(req.body);
