@@ -1,13 +1,4 @@
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 function __export(m) {
     for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];
 }
@@ -22,6 +13,7 @@ const jmdict_simplified_node_1 = require("jmdict-simplified-node");
 const kamiya_codec_1 = require("kamiya-codec");
 const path_1 = __importDefault(require("path"));
 const chino_particles_1 = require("./chino-particles");
+const customDictionary_1 = require("./customDictionary");
 const jdepp_1 = require("./jdepp");
 const kanjidic_1 = require("./kanjidic");
 const mecabUnidic_1 = require("./mecabUnidic");
@@ -40,16 +32,14 @@ exports.jmdictPromise = jmdict_simplified_node_1.setup(process.env['JMDICT_SIMPL
  * usefulness with this set to 20.
  */
 const DICTIONARY_LIMIT = 20;
-function mecabJdepp(sentence, nBest = 1) {
-    return __awaiter(this, void 0, void 0, function* () {
-        let rawMecab = yield mecabUnidic_1.invokeMecab(sentence, nBest);
-        let { morphemes: allSentencesMorphemes, raws: allSentencesRaws } = mecabUnidic_1.parseMecab(rawMecab, nBest);
-        // throw away multiple sentences, we're only going to pass in one (hopefully)
-        const morphemes = allSentencesMorphemes[0];
-        const raws = allSentencesRaws[0];
-        const bunsetsus = yield Promise.all(morphemes.map((attempt, idx) => jdepp_1.addJdepp(raws[idx], attempt)));
-        return morphemes.map((attempt, idx) => ({ morphemes: attempt, bunsetsus: bunsetsus[idx] }));
-    });
+async function mecabJdepp(sentence, nBest = 1) {
+    let rawMecab = await mecabUnidic_1.invokeMecab(sentence, nBest);
+    let { morphemes: allSentencesMorphemes, raws: allSentencesRaws } = mecabUnidic_1.parseMecab(rawMecab, nBest);
+    // throw away multiple sentences, we're only going to pass in one (hopefully)
+    const morphemes = allSentencesMorphemes[0];
+    const raws = allSentencesRaws[0];
+    const bunsetsus = await Promise.all(morphemes.map((attempt, idx) => jdepp_1.addJdepp(raws[idx], attempt)));
+    return morphemes.map((attempt, idx) => ({ morphemes: attempt, bunsetsus: bunsetsus[idx] }));
 }
 exports.mecabJdepp = mecabJdepp;
 const p = (x) => console.dir(x, { depth: null });
@@ -68,114 +58,118 @@ const p = (x) => console.dir(x, { depth: null });
  * }
  * ```
  */
-function enumerateDictionaryHits(plainMorphemes, full = true, limit = -1) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const { db } = yield exports.jmdictPromise;
-        const simplify = (c) => (c.left || c.right) ? c : c.cloze;
-        const jmdictFurigana = yield exports.jmdictFuriganaPromise;
-        const morphemes = plainMorphemes.map(m => (Object.assign(Object.assign({}, m), { 
-            // if "symbol" POS, don't needlessly double the number of things to search for later in forkingPaths
-            searchKanji: unique(m.partOfSpeech[0].startsWith('symbol') ? [m.literal] : [m.literal, m.lemma]), searchReading: unique(morphemeToSearchLemma(m).concat(morphemeToStringLiteral(m, jmdictFurigana))) })));
-        const superhits = [];
-        for (let startIdx = 0; startIdx < morphemes.length; startIdx++) {
-            const results = [];
+async function enumerateDictionaryHits(plainMorphemes, full = true, limit = -1) {
+    const { db } = await exports.jmdictPromise;
+    const simplify = (c) => (c.left || c.right) ? c : c.cloze;
+    const jmdictFurigana = await exports.jmdictFuriganaPromise;
+    const morphemes = plainMorphemes.map(m => ({
+        ...m,
+        // if "symbol" POS, don't needlessly double the number of things to search for later in forkingPaths
+        searchKanji: unique(m.partOfSpeech[0].startsWith('symbol') ? [m.literal] : [m.literal, m.lemma]),
+        searchReading: unique(morphemeToSearchLemma(m).concat(morphemeToStringLiteral(m, jmdictFurigana)))
+    }));
+    const superhits = [];
+    for (let startIdx = 0; startIdx < morphemes.length; startIdx++) {
+        const results = [];
+        if (!full) {
+            const pos = morphemes[startIdx].partOfSpeech;
+            if (pos[0].startsWith('supplementary') || pos[0].startsWith('auxiliary')) {
+                // skip these
+                superhits.push({ startIdx, results });
+                continue;
+            }
+        }
+        for (let endIdx = Math.min(morphemes.length, startIdx + 5); endIdx > startIdx; --endIdx) {
+            const run = morphemes.slice(startIdx, endIdx);
+            const runLiteralCore = bunsetsuToString(run);
+            const runLiteral = simplify(curtiz_utils_1.generateContextClozed(bunsetsuToString(morphemes.slice(0, startIdx)), runLiteralCore, bunsetsuToString(morphemes.slice(endIdx))));
             if (!full) {
-                const pos = morphemes[startIdx].partOfSpeech;
-                if (pos[0].startsWith('supplementary') || pos[0].startsWith('auxiliary')) {
-                    // skip these
-                    superhits.push({ startIdx, results });
+                // skip particles like は and も if they're by themselves as an optimization
+                if (runLiteralCore.length === 1 && curtiz_utils_1.hasKana(runLiteralCore[0]) && runLiteralCore === run[0].lemma) {
                     continue;
                 }
             }
-            for (let endIdx = Math.min(morphemes.length, startIdx + 5); endIdx > startIdx; --endIdx) {
+            const scored = [];
+            function helperSearchesHitsToScored(searches, subhits, searchKey) {
+                return curtiz_utils_1.flatten(subhits.map((v, i) => v.map(w => {
+                    // help catch issues with automatic type widening and excess property checks
+                    const ret = {
+                        wordId: w.id,
+                        score: scoreMorphemeWord(run, searches[i], searchKey, w),
+                        search: searches[i],
+                        tags: {},
+                        word: w
+                        // run: runLiteral,
+                        // runIdx: [startIdx, endIdx - 1],
+                    };
+                    return ret;
+                })));
+            }
+            // Search reading
+            {
+                const readingSearches = forkingPaths(run.map(m => m.searchReading)).map(v => v.join(''));
+                // Consider searching rendaku above for non-initial morphemes? It'd be nice if "猿ちえお" (saru chi e o) found
+                // "猿知恵" (さるぢえ・さるじえ)
+                const readingSubhits = await Promise.all(readingSearches.map(search => Promise.all([jmdict_simplified_node_1.readingBeginning(db, search, DICTIONARY_LIMIT), customDictionary_1.readingBeginning(null, search)])
+                    .then(([a, b]) => [...a, ...b])));
+                scored.push(...helperSearchesHitsToScored(readingSearches, readingSubhits, 'kana'));
+            }
+            // Search literals if needed, this works around MeCab mis-readings like お父さん->おちちさん
+            {
+                const kanjiSearches = forkingPaths(run.map(m => m.searchKanji)).map(v => v.join('')).filter(curtiz_utils_1.hasKanji);
+                const kanjiSubhits = await Promise.all(kanjiSearches.map(search => jmdict_simplified_node_1.kanjiBeginning(db, search, DICTIONARY_LIMIT)));
+                scored.push(...helperSearchesHitsToScored(kanjiSearches, kanjiSubhits, 'kanji'));
+            }
+            scored.sort((a, b) => b.score - a.score);
+            if (scored.length > 0) {
+                results.push({ endIdx, run: runLiteral, results: curtiz_utils_1.dedupeLimit(scored, o => o.wordId, limit) });
+            }
+        }
+        if (results.length === 0) {
+            // we didn't find ANYTHING for this morpheme? Try character by character
+            const m = morphemes[startIdx];
+            const scored = [];
+            for (const [searches, searchFn, key] of [[m.searchReading, jmdict_simplified_node_1.readingBeginning, 'kana'],
+                [m.searchKanji, jmdict_simplified_node_1.kanjiBeginning, 'kanji'],
+            ]) {
+                for (const search of searches) {
+                    const all = Array.from(curtiz_utils_1.allSubstrings(search));
+                    const subhits = await Promise.all(all.map(search => searchFn(db, search, DICTIONARY_LIMIT)));
+                    for (const [idx, hits] of subhits.entries()) {
+                        const search = all[idx];
+                        for (const w of hits) {
+                            const score = scoreMorphemeWord([m], search, key, w);
+                            scored.push({ wordId: w.id, score, search, tags: {} });
+                        }
+                    }
+                }
+            }
+            if (scored.length > 0) {
+                scored.sort((a, b) => b.score - a.score);
+                const endIdx = startIdx + 1;
                 const run = morphemes.slice(startIdx, endIdx);
                 const runLiteralCore = bunsetsuToString(run);
                 const runLiteral = simplify(curtiz_utils_1.generateContextClozed(bunsetsuToString(morphemes.slice(0, startIdx)), runLiteralCore, bunsetsuToString(morphemes.slice(endIdx))));
-                if (!full) {
-                    // skip particles like は and も if they're by themselves as an optimization
-                    if (runLiteralCore.length === 1 && curtiz_utils_1.hasKana(runLiteralCore[0]) && runLiteralCore === run[0].lemma) {
-                        continue;
-                    }
-                }
-                const scored = [];
-                function helperSearchesHitsToScored(searches, subhits, searchKey) {
-                    return curtiz_utils_1.flatten(subhits.map((v, i) => v.map(w => {
-                        // help catch issues with automatic type widening and excess property checks
-                        const ret = {
-                            wordId: w.id,
-                            score: scoreMorphemeWord(run, searches[i], searchKey, w),
-                            search: searches[i],
-                            tags: {}
-                            // run: runLiteral,
-                            // runIdx: [startIdx, endIdx - 1],
-                        };
-                        return ret;
-                    })));
-                }
-                // Search reading
-                {
-                    const readingSearches = forkingPaths(run.map(m => m.searchReading)).map(v => v.join(''));
-                    // Consider searching rendaku above for non-initial morphemes? It'd be nice if "猿ちえお" (saru chi e o) found
-                    // "猿知恵" (さるぢえ・さるじえ)
-                    const readingSubhits = yield Promise.all(readingSearches.map(search => jmdict_simplified_node_1.readingBeginning(db, search, DICTIONARY_LIMIT)));
-                    scored.push(...helperSearchesHitsToScored(readingSearches, readingSubhits, 'kana'));
-                }
-                // Search literals if needed, this works around MeCab mis-readings like お父さん->おちちさん
-                {
-                    const kanjiSearches = forkingPaths(run.map(m => m.searchKanji)).map(v => v.join('')).filter(curtiz_utils_1.hasKanji);
-                    const kanjiSubhits = yield Promise.all(kanjiSearches.map(search => jmdict_simplified_node_1.kanjiBeginning(db, search, DICTIONARY_LIMIT)));
-                    scored.push(...helperSearchesHitsToScored(kanjiSearches, kanjiSubhits, 'kanji'));
-                }
-                scored.sort((a, b) => b.score - a.score);
-                if (scored.length > 0) {
-                    results.push({ endIdx, run: runLiteral, results: curtiz_utils_1.dedupeLimit(scored, o => o.wordId, limit) });
-                }
+                results.push({ endIdx, run: runLiteral, results: curtiz_utils_1.dedupeLimit(scored, o => o.wordId, limit) });
             }
-            if (results.length === 0) {
-                // we didn't find ANYTHING for this morpheme? Try character by character
-                const m = morphemes[startIdx];
-                const scored = [];
-                for (const [searches, searchFn, key] of [[m.searchReading, jmdict_simplified_node_1.readingBeginning, 'kana'],
-                    [m.searchKanji, jmdict_simplified_node_1.kanjiBeginning, 'kanji'],
-                ]) {
-                    for (const search of searches) {
-                        const all = Array.from(curtiz_utils_1.allSubstrings(search));
-                        const subhits = yield Promise.all(all.map(search => searchFn(db, search, DICTIONARY_LIMIT)));
-                        for (const [idx, hits] of subhits.entries()) {
-                            const search = all[idx];
-                            for (const w of hits) {
-                                const score = scoreMorphemeWord([m], search, key, w);
-                                scored.push({ wordId: w.id, score, search, tags: {} });
-                            }
-                        }
-                    }
-                }
-                if (scored.length > 0) {
-                    scored.sort((a, b) => b.score - a.score);
-                    const endIdx = startIdx + 1;
-                    const run = morphemes.slice(startIdx, endIdx);
-                    const runLiteralCore = bunsetsuToString(run);
-                    const runLiteral = simplify(curtiz_utils_1.generateContextClozed(bunsetsuToString(morphemes.slice(0, startIdx)), runLiteralCore, bunsetsuToString(morphemes.slice(endIdx))));
-                    results.push({ endIdx, run: runLiteral, results: curtiz_utils_1.dedupeLimit(scored, o => o.wordId, limit) });
-                }
-            }
-            {
-                // add relateds
-                for (const r of results) {
-                    const words = yield jmdictIdsToWords(r.results);
-                    const xrefs = words.flatMap(w => w.sense.flatMap(s => s.related));
-                    const references = yield Promise.all(xrefs.flatMap(x => jmdict_simplified_node_1.getXrefs(db, x).then(refs => ({ refs, xref: x }))));
-                    for (const { refs, xref } of references) {
-                        for (const word of refs) {
-                            r.results.push({ wordId: word.id, score: 0, search: JSON.stringify({ xref }), tags: {}, isXref: true });
-                        }
-                    }
-                }
-            }
-            superhits.push({ startIdx, results });
         }
-        return superhits;
-    });
+        {
+            // add relateds
+            for (const r of results) {
+                console.log("WHEE", r.results);
+                const words = await jmdictIdsToWords(r.results);
+                const xrefs = words.flatMap(w => w.sense.flatMap(s => s.related));
+                const references = await Promise.all(xrefs.flatMap(x => jmdict_simplified_node_1.getXrefs(db, x).then(refs => ({ refs, xref: x }))));
+                for (const { refs, xref } of references) {
+                    for (const word of refs) {
+                        r.results.push({ wordId: word.id, score: 0, search: JSON.stringify({ xref }), tags: {}, isXref: true });
+                    }
+                }
+            }
+        }
+        superhits.push({ startIdx, results });
+    }
+    return superhits;
 }
 exports.enumerateDictionaryHits = enumerateDictionaryHits;
 function scoreMorphemeWord(run, searched, searchKey, word) {
@@ -271,91 +265,88 @@ const bunsetsuToString = (morphemes) => morphemes.map(m => m.literal).join('');
 function betterMorphemePredicate(m) {
     return !(m.partOfSpeech[0] === 'supplementary_symbol') && !(m.partOfSpeech[0] === 'particle');
 }
-function morphemesToConjPhrases(startIdx, goodBunsetsu, fullCloze, verbose = false) {
-    var _a;
-    return __awaiter(this, void 0, void 0, function* () {
-        const endIdx = startIdx + goodBunsetsu.length;
-        const cloze = bunsetsuToString(goodBunsetsu);
-        const jf = yield exports.jmdictFuriganaPromise;
-        const lemmas = goodBunsetsu.map(o => {
-            const entries = jf.textToEntry.get(o.lemma) || [];
-            if (o.lemma.endsWith('-他動詞') && o.partOfSpeech[0] === 'verb') {
-                // sometimes ("ひいた" in "かぜひいた"), UniDic lemmas are weird like "引く-他動詞" eyeroll
-                entries.push(...(jf.textToEntry.get(o.lemma.replace('-他動詞', '')) || []));
+async function morphemesToConjPhrases(startIdx, goodBunsetsu, fullCloze, verbose = false) {
+    const endIdx = startIdx + goodBunsetsu.length;
+    const cloze = bunsetsuToString(goodBunsetsu);
+    const jf = await exports.jmdictFuriganaPromise;
+    const lemmas = goodBunsetsu.map(o => {
+        const entries = jf.textToEntry.get(o.lemma) || [];
+        if (o.lemma.endsWith('-他動詞') && o.partOfSpeech[0] === 'verb') {
+            // sometimes ("ひいた" in "かぜひいた"), UniDic lemmas are weird like "引く-他動詞" eyeroll
+            entries.push(...(jf.textToEntry.get(o.lemma.replace('-他動詞', '')) || []));
+        }
+        const lemmaReading = curtiz_utils_1.kata2hira(o.lemmaReading);
+        const entry = entries.find(e => e.reading === lemmaReading);
+        return entry ? entry.furigana : o.lemma === lemmaReading ? [lemmaReading] : [{ ruby: o.lemma, rt: lemmaReading }];
+    });
+    const ret = { deconj: [], startIdx, endIdx, morphemes: goodBunsetsu, cloze: fullCloze, lemmas };
+    const first = goodBunsetsu[0];
+    const pos0 = first.partOfSpeech[0];
+    const pos0Last = first.partOfSpeech[first.partOfSpeech.length - 1];
+    const verbNotAdj = pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0Last === 'verbal_suru';
+    const ichidan = first.inflectionType?.[0].includes('ichidan');
+    const iAdj = pos0.endsWith('adjective_i');
+    const deconjs = [];
+    for (const mergeSuffixes of [true, false]) {
+        // sometimes the lemma is too helpful: "ワンダフル-wonderful", so split on dash
+        let dictionaryForm = goodBunsetsu[0].lemma.split('-')[0];
+        if (mergeSuffixes) {
+            const nonSuffixIdx = goodBunsetsu.findIndex((m, i) => i > 0 && m.partOfSpeech[0] !== 'suffix');
+            if (nonSuffixIdx >= 1) {
+                dictionaryForm += goodBunsetsu.slice(1, nonSuffixIdx).map(m => m.lemma.split('-')[0]).join('');
             }
-            const lemmaReading = curtiz_utils_1.kata2hira(o.lemmaReading);
-            const entry = entries.find(e => e.reading === lemmaReading);
-            return entry ? entry.furigana : o.lemma === lemmaReading ? [lemmaReading] : [{ ruby: o.lemma, rt: lemmaReading }];
-        });
-        const ret = { deconj: [], startIdx, endIdx, morphemes: goodBunsetsu, cloze: fullCloze, lemmas };
-        const first = goodBunsetsu[0];
-        const pos0 = first.partOfSpeech[0];
-        const pos0Last = first.partOfSpeech[first.partOfSpeech.length - 1];
-        const verbNotAdj = pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0Last === 'verbal_suru';
-        const ichidan = (_a = first.inflectionType) === null || _a === void 0 ? void 0 : _a[0].includes('ichidan');
-        const iAdj = pos0.endsWith('adjective_i');
-        const deconjs = [];
-        for (const mergeSuffixes of [true, false]) {
-            // sometimes the lemma is too helpful: "ワンダフル-wonderful", so split on dash
-            let dictionaryForm = goodBunsetsu[0].lemma.split('-')[0];
-            if (mergeSuffixes) {
-                const nonSuffixIdx = goodBunsetsu.findIndex((m, i) => i > 0 && m.partOfSpeech[0] !== 'suffix');
-                if (nonSuffixIdx >= 1) {
-                    dictionaryForm += goodBunsetsu.slice(1, nonSuffixIdx).map(m => m.lemma.split('-')[0]).join('');
+        }
+        // Often the literal cloze will have fewer kanji than the lemma
+        if (cloze.split('').filter(curtiz_utils_1.hasKanji).length !== dictionaryForm.split('').filter(curtiz_utils_1.hasKanji).length) {
+            // deconjugate won't find anything. Look at lemmas and try to kana-ify the dictionaryForm
+            for (const lemma of lemmas.flat()) {
+                if (typeof lemma === 'string') {
+                    continue;
+                }
+                const { rt } = lemma;
+                // As above, the lemma is sometimes too detailed: "引く-他動詞"
+                const ruby = lemma.ruby.split('-')[0];
+                // Replace the kanji in the dictionary form if it's not in the literal cloze
+                if (!cloze.includes(ruby)) {
+                    dictionaryForm = dictionaryForm.replace(ruby, rt);
                 }
             }
-            // Often the literal cloze will have fewer kanji than the lemma
-            if (cloze.split('').filter(curtiz_utils_1.hasKanji).length !== dictionaryForm.split('').filter(curtiz_utils_1.hasKanji).length) {
-                // deconjugate won't find anything. Look at lemmas and try to kana-ify the dictionaryForm
-                for (const lemma of lemmas.flat()) {
-                    if (typeof lemma === 'string') {
-                        continue;
-                    }
-                    const { rt } = lemma;
-                    // As above, the lemma is sometimes too detailed: "引く-他動詞"
-                    const ruby = lemma.ruby.split('-')[0];
-                    // Replace the kanji in the dictionary form if it's not in the literal cloze
-                    if (!cloze.includes(ruby)) {
-                        dictionaryForm = dictionaryForm.replace(ruby, rt);
-                    }
-                }
-            }
-            if (verbose) {
-                console.log('? ', { verbNotAdj, ichidan, iAdj, dictionaryForm, cloze });
-            }
-            const deconj = verbNotAdj ? kamiya_codec_1.verbDeconjugate(cloze, dictionaryForm, ichidan) : kamiya_codec_1.adjDeconjugate(cloze, dictionaryForm, iAdj);
-            if (deconj.length) {
-                deconjs.push(...deconj);
-            }
-            else {
-                // sometimes, the lemma has a totally different kanji: 刺される has lemma "差す-他動詞" lol.
-                // in these situations, try replacing kanji from the cloze into the dictionary form.
-                const clozeKanji = cloze.split('').filter(curtiz_utils_1.hasKanji);
-                const dictKanji = dictionaryForm.split('').filter(curtiz_utils_1.hasKanji);
-                if (clozeKanji.length === dictKanji.length) {
-                    // This is a very stupid way to do it but works for 刺される: replace kanji one at a time...
-                    for (const [idx, clozeK] of clozeKanji.entries()) {
-                        const dictK = dictKanji[idx];
-                        const newDictionaryForm = dictionaryForm.replace(dictK, clozeK);
-                        const deconj = verbNotAdj ? kamiya_codec_1.verbDeconjugate(cloze, newDictionaryForm, ichidan)
-                            : kamiya_codec_1.adjDeconjugate(cloze, newDictionaryForm, iAdj);
-                        if (deconj.length) {
-                            deconjs.push(...deconj);
-                            break;
-                            // if we find something, pray it's good and bail.
-                        }
+        }
+        if (verbose) {
+            console.log('? ', { verbNotAdj, ichidan, iAdj, dictionaryForm, cloze });
+        }
+        const deconj = verbNotAdj ? kamiya_codec_1.verbDeconjugate(cloze, dictionaryForm, ichidan) : kamiya_codec_1.adjDeconjugate(cloze, dictionaryForm, iAdj);
+        if (deconj.length) {
+            deconjs.push(...deconj);
+        }
+        else {
+            // sometimes, the lemma has a totally different kanji: 刺される has lemma "差す-他動詞" lol.
+            // in these situations, try replacing kanji from the cloze into the dictionary form.
+            const clozeKanji = cloze.split('').filter(curtiz_utils_1.hasKanji);
+            const dictKanji = dictionaryForm.split('').filter(curtiz_utils_1.hasKanji);
+            if (clozeKanji.length === dictKanji.length) {
+                // This is a very stupid way to do it but works for 刺される: replace kanji one at a time...
+                for (const [idx, clozeK] of clozeKanji.entries()) {
+                    const dictK = dictKanji[idx];
+                    const newDictionaryForm = dictionaryForm.replace(dictK, clozeK);
+                    const deconj = verbNotAdj ? kamiya_codec_1.verbDeconjugate(cloze, newDictionaryForm, ichidan)
+                        : kamiya_codec_1.adjDeconjugate(cloze, newDictionaryForm, iAdj);
+                    if (deconj.length) {
+                        deconjs.push(...deconj);
+                        break;
+                        // if we find something, pray it's good and bail.
                     }
                 }
             }
         }
-        ret.deconj = uniqueKey(deconjs, x => {
-            if ('auxiliaries' in x) {
-                return x.auxiliaries.join('/') + x.conjugation + x.result.join('/');
-            }
-            return x.conjugation + x.result.join('/');
-        });
-        return ret;
+    }
+    ret.deconj = uniqueKey(deconjs, x => {
+        if ('auxiliaries' in x) {
+            return x.auxiliaries.join('/') + x.conjugation + x.result.join('/');
+        }
+        return x.conjugation + x.result.join('/');
     });
+    return ret;
 }
 function uniqueKey(v, key) {
     const ys = new Set();
@@ -378,108 +369,104 @@ function* allSlices(v) {
     }
 }
 // Find clozes: particles and conjugated verb/adjective phrases
-function identifyFillInBlanks(bunsetsus, verbose = false) {
-    var _a;
-    return __awaiter(this, void 0, void 0, function* () {
-        const sentence = bunsetsus.map(bunsetsuToString).join('');
-        const conjugatedPhrases = [];
-        const particles = [];
-        for (const [bidx, fullBunsetsu] of bunsetsus.entries()) {
-            const startIdx = bunsetsus.slice(0, bidx).map(o => o.length).reduce((p, c) => p + c, 0);
-            if (!fullBunsetsu[0]) {
-                continue;
+async function identifyFillInBlanks(bunsetsus, verbose = false) {
+    const sentence = bunsetsus.map(bunsetsuToString).join('');
+    const conjugatedPhrases = [];
+    const particles = [];
+    for (const [bidx, fullBunsetsu] of bunsetsus.entries()) {
+        const startIdx = bunsetsus.slice(0, bidx).map(o => o.length).reduce((p, c) => p + c, 0);
+        if (!fullBunsetsu[0]) {
+            continue;
+        }
+        for (const { start, slice: sliceBunsetsu } of allSlices(fullBunsetsu)) {
+            const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(fullBunsetsu.slice(0, start));
+            const first = sliceBunsetsu[0];
+            if (verbose) {
+                console.log('g', sliceBunsetsu.map(o => o.literal).join(' '));
             }
-            for (const { start, slice: sliceBunsetsu } of allSlices(fullBunsetsu)) {
-                const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(fullBunsetsu.slice(0, start));
-                const first = sliceBunsetsu[0];
+            const pos0 = first.partOfSpeech[0] || '';
+            const pos1 = first.partOfSpeech[1] || '';
+            const pos0Last = first.partOfSpeech[first.partOfSpeech.length - 1] || '';
+            /*
+            If a bunsetsu has >1 morphemes, check if it's a verb or an adjective (i or na).
+            If it's just one, make sure it's an adjective that's not a conclusive (catches 朝早く)
+            Also check for copulas (da/desu).
+            */
+            if ((sliceBunsetsu.length === 1 && pos0.startsWith('adjectiv') &&
+                (first.inflection?.[0] ? !first.inflection[0].endsWith('conclusive') : true)) ||
+                (sliceBunsetsu.length > 0 &&
+                    (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject') ||
+                        pos0Last === 'verbal_suru' || pos0Last.startsWith('adjectival'))) ||
+                ((pos0.startsWith('aux') && (pos1.startsWith('desu') || pos1.startsWith('da'))))) {
+                const middle = bunsetsuToString(sliceBunsetsu);
+                const right = sentence.slice(left.length + middle.length);
+                const cloze = curtiz_utils_1.generateContextClozed(left, middle, right);
+                const res = await morphemesToConjPhrases(startIdx + start, sliceBunsetsu, cloze);
                 if (verbose) {
-                    console.log('g', sliceBunsetsu.map(o => o.literal).join(' '));
+                    console.log('^ found', res.deconj);
                 }
-                const pos0 = first.partOfSpeech[0] || '';
-                const pos1 = first.partOfSpeech[1] || '';
-                const pos0Last = first.partOfSpeech[first.partOfSpeech.length - 1] || '';
-                /*
-                If a bunsetsu has >1 morphemes, check if it's a verb or an adjective (i or na).
-                If it's just one, make sure it's an adjective that's not a conclusive (catches 朝早く)
-                Also check for copulas (da/desu).
-                */
-                if ((sliceBunsetsu.length === 1 && pos0.startsWith('adjectiv') &&
-                    (((_a = first.inflection) === null || _a === void 0 ? void 0 : _a[0]) ? !first.inflection[0].endsWith('conclusive') : true)) ||
-                    (sliceBunsetsu.length > 0 &&
-                        (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject') ||
-                            pos0Last === 'verbal_suru' || pos0Last.startsWith('adjectival'))) ||
-                    ((pos0.startsWith('aux') && (pos1.startsWith('desu') || pos1.startsWith('da'))))) {
-                    const middle = bunsetsuToString(sliceBunsetsu);
-                    const right = sentence.slice(left.length + middle.length);
-                    const cloze = curtiz_utils_1.generateContextClozed(left, middle, right);
-                    const res = yield morphemesToConjPhrases(startIdx + start, sliceBunsetsu, cloze);
-                    if (verbose) {
-                        console.log('^ found', res.deconj);
-                    }
-                    if (res.deconj.length) {
-                        conjugatedPhrases.push(res);
-                    }
+                if (res.deconj.length) {
+                    conjugatedPhrases.push(res);
                 }
             }
-            // Handle particles: identify and look up in Chino's "All About Particles" list
-            const particlePredicate = (p) => p.partOfSpeech[0].startsWith('particle') && p.partOfSpeech.length > 1;
-            for (const [pidx, particle] of fullBunsetsu.entries()) {
-                if (particlePredicate(particle)) {
-                    const startIdxParticle = startIdx + pidx;
-                    const endIdx = startIdxParticle + 1;
-                    const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(fullBunsetsu.slice(0, pidx));
-                    const right = bunsetsuToString(fullBunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
-                    const cloze = curtiz_utils_1.generateContextClozed(left, particle.literal, right);
-                    const chino = chino_particles_1.lookup(cloze.cloze);
-                    if (particle.literal !== particle.lemma) {
-                        const chinoLemma = chino_particles_1.lookup(particle.lemma);
-                        for (const [chinoNum, chinoStr] of chinoLemma) {
-                            if (!chino.find(([c]) => c === chinoNum)) {
-                                chino.push([chinoNum, chinoStr]);
-                            }
+        }
+        // Handle particles: identify and look up in Chino's "All About Particles" list
+        const particlePredicate = (p) => p.partOfSpeech[0].startsWith('particle') && p.partOfSpeech.length > 1;
+        for (const [pidx, particle] of fullBunsetsu.entries()) {
+            if (particlePredicate(particle)) {
+                const startIdxParticle = startIdx + pidx;
+                const endIdx = startIdxParticle + 1;
+                const left = bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(fullBunsetsu.slice(0, pidx));
+                const right = bunsetsuToString(fullBunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
+                const cloze = curtiz_utils_1.generateContextClozed(left, particle.literal, right);
+                const chino = chino_particles_1.lookup(cloze.cloze);
+                if (particle.literal !== particle.lemma) {
+                    const chinoLemma = chino_particles_1.lookup(particle.lemma);
+                    for (const [chinoNum, chinoStr] of chinoLemma) {
+                        if (!chino.find(([c]) => c === chinoNum)) {
+                            chino.push([chinoNum, chinoStr]);
                         }
                     }
-                    particles.push({ chino, cloze, startIdx: startIdxParticle, endIdx, morphemes: [particle] });
                 }
+                particles.push({ chino, cloze, startIdx: startIdxParticle, endIdx, morphemes: [particle] });
             }
         }
-        // Try to glue adjacent particles together if they are in Chino's list of particles too
-        const allMorphemes = bunsetsus.flat();
-        for (let i = 0; i < particles.length; i++) {
-            // `4` below means we'll try to glue 3 particles together
-            // `j<=...` has to be `<=` because `j` will be `slice`'s 2nd arg and is exclusive (not inclusive)
-            for (let j = i + 2; (j < i + 4) && (j <= particles.length); j++) {
-                const adjacent = particles.slice(i, j);
-                if (!adjacent.every((curr, idx, arr) => arr[idx + 1] ? curr.endIdx === arr[idx + 1].startIdx : true)) {
-                    // `adjacent` isn't actually adjacent
-                    continue;
-                }
-                const combined = adjacent.map(o => o.cloze.cloze).join('');
-                const hits = chino_particles_1.lookup(combined);
-                if (hits.length) {
-                    const first = adjacent[0];
-                    const last = adjacent[adjacent.length - 1];
-                    const left = bunsetsuToString(allMorphemes.slice(0, first.startIdx));
-                    const right = bunsetsuToString(allMorphemes.slice(last.endIdx));
-                    const cloze = curtiz_utils_1.generateContextClozed(left, combined, right);
-                    particles.push({
-                        chino: hits,
-                        cloze,
-                        startIdx: first.startIdx,
-                        endIdx: last.endIdx,
-                        morphemes: adjacent.flatMap(o => o.morphemes)
-                    });
-                }
+    }
+    // Try to glue adjacent particles together if they are in Chino's list of particles too
+    const allMorphemes = bunsetsus.flat();
+    for (let i = 0; i < particles.length; i++) {
+        // `4` below means we'll try to glue 3 particles together
+        // `j<=...` has to be `<=` because `j` will be `slice`'s 2nd arg and is exclusive (not inclusive)
+        for (let j = i + 2; (j < i + 4) && (j <= particles.length); j++) {
+            const adjacent = particles.slice(i, j);
+            if (!adjacent.every((curr, idx, arr) => arr[idx + 1] ? curr.endIdx === arr[idx + 1].startIdx : true)) {
+                // `adjacent` isn't actually adjacent
+                continue;
+            }
+            const combined = adjacent.map(o => o.cloze.cloze).join('');
+            const hits = chino_particles_1.lookup(combined);
+            if (hits.length) {
+                const first = adjacent[0];
+                const last = adjacent[adjacent.length - 1];
+                const left = bunsetsuToString(allMorphemes.slice(0, first.startIdx));
+                const right = bunsetsuToString(allMorphemes.slice(last.endIdx));
+                const cloze = curtiz_utils_1.generateContextClozed(left, combined, right);
+                particles.push({
+                    chino: hits,
+                    cloze,
+                    startIdx: first.startIdx,
+                    endIdx: last.endIdx,
+                    morphemes: adjacent.flatMap(o => o.morphemes)
+                });
             }
         }
-        return { particles, conjugatedPhrases };
-    });
+    }
+    return { particles, conjugatedPhrases };
 }
 exports.identifyFillInBlanks = identifyFillInBlanks;
 function morphemeToSearchLemma(m) {
-    var _a, _b;
     const pos0 = m.partOfSpeech[0];
-    const conjugatable = ((_a = m.inflection) === null || _a === void 0 ? void 0 : _a[0]) || ((_b = m.inflectionType) === null || _b === void 0 ? void 0 : _b[0]) || pos0.startsWith('verb') ||
+    const conjugatable = (m.inflection?.[0]) || (m.inflectionType?.[0]) || pos0.startsWith('verb') ||
         pos0.endsWith('_verb') || pos0.startsWith('adject');
     const potentialRendaku = m.literal === m.lemma && curtiz_utils_1.hasKanji(m.lemma) && m.lemmaReading !== m.pronunciation;
     return (conjugatable || potentialRendaku) ? [curtiz_utils_1.kata2hira(m.lemmaReading)] : [];
@@ -581,10 +568,8 @@ const DUMB_CHOUONPU_MAP = (function makeChouonpuMap() {
     doer(os, 'う');
     return m;
 })();
-function morphemesToFurigana(line, morphemes, overrides) {
-    return __awaiter(this, void 0, void 0, function* () {
-        return morphemesToFuriganaCore(morphemes, overrides).then(o => checkFurigana(line, o));
-    });
+async function morphemesToFurigana(line, morphemes, overrides) {
+    return morphemesToFuriganaCore(morphemes, overrides).then(o => checkFurigana(line, o));
 }
 exports.morphemesToFurigana = morphemesToFurigana;
 /**
@@ -593,84 +578,82 @@ exports.morphemesToFurigana = morphemesToFurigana;
  * `overrides = new Map([['日本', [{ruby: '日', rt: 'に'}, {ruby: '本', rt: 'ほん'}]]])`
  * Note that `overrides` operates on a morpheme-by-morpheme basis.
  */
-function morphemesToFuriganaCore(morphemes, overrides) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const furigana = yield Promise.all(morphemes.map((m) => __awaiter(this, void 0, void 0, function* () {
-            const { lemma, lemmaReading, literal, pronunciation } = m;
-            if (!curtiz_utils_1.hasKanji(literal)) {
+async function morphemesToFuriganaCore(morphemes, overrides) {
+    const furigana = await Promise.all(morphemes.map(async (m) => {
+        const { lemma, lemmaReading, literal, pronunciation } = m;
+        if (!curtiz_utils_1.hasKanji(literal)) {
+            return [literal];
+        }
+        {
+            const hit = overrides[literal];
+            if (hit) {
+                return hit;
+            }
+        }
+        const jmdictFurigana = await exports.jmdictFuriganaPromise;
+        const { textToEntry, readingToEntry } = jmdictFurigana;
+        const literalHit = search(textToEntry, literal, 'reading', morphemeToStringLiteral(m, jmdictFurigana));
+        if (literalHit) {
+            return literalHit.furigana;
+        }
+        const pronunciationHit = search(readingToEntry, pronunciation, 'text', [literal]);
+        if (pronunciationHit) {
+            return pronunciationHit.furigana;
+        }
+        // help with 一本/rendaku
+        if (literal.length === 1) {
+            return [{ ruby: literal, rt: morphemeToStringLiteral(m).join('・') }];
+        }
+        // for e.g. 住ん|で|い|ます but not 一本 (pronounced pon but lemma=hon: rendaku)
+        // if you reach here, there's nothing ensuring that the furigana found will match `pronunciation`!
+        const lemmaHit = search(textToEntry, lemma, 'reading', morphemeToStringLiteral({ lemma, lemmaReading, literal: lemma, pronunciation: lemmaReading }, jmdictFurigana));
+        if (lemmaHit) {
+            const furiganaDict = new Map();
+            for (const f of lemmaHit.furigana) {
+                if (typeof f === 'string') {
+                    continue;
+                }
+                furiganaDict.set(f.ruby, f.rt);
+            }
+            const chars = literal.split('');
+            let kanji = chars.filter(curtiz_utils_1.hasKanji);
+            const annotatedChars = chars.slice();
+            // start from all kanji characters in a string, see if that's in furiganaDict, if not, chop last
+            while (kanji.length) {
+                const hit = triu(kanji).find(ks => furiganaDict.has(ks.join('')));
+                if (hit) {
+                    const hitstr = hit.join('');
+                    const idx = literal.indexOf(hitstr);
+                    annotatedChars[idx] = { ruby: hitstr, rt: furiganaDict.get(hitstr) || hitstr };
+                    for (let i = idx + 1; i < idx + hitstr.length; i++) {
+                        annotatedChars[i] = '';
+                    }
+                    kanji = kanji.slice(hitstr.length);
+                    continue;
+                }
+                // no hit found, kanji won't shrink to empty, break now
+                break;
+            }
+            if (kanji.length === 0) {
+                return annotatedChars.filter(x => x !== '');
+            }
+        }
+        // const lemmaReadingHit = search(readingToEntry, lemmaReading, 'text', lemma);
+        // if (lemmaReadingHit) { return lemmaReadingHit.furigana; }
+        // We couldn't rely on JMDictFurigana to help us out. The best we can do now is to use MeCab's parsing.
+        // For example: literal="帰っ" and rt="かえっ". Also 鍛え直し vs きたえなおし.
+        // In general, literal can mix kanji and kana, rt will have only kana.
+        {
+            const rt = morphemeToStringLiteral(m)[0];
+            if (rt === literal) {
                 return [literal];
             }
-            {
-                const hit = overrides[literal];
-                if (hit) {
-                    return hit;
-                }
-            }
-            const jmdictFurigana = yield exports.jmdictFuriganaPromise;
-            const { textToEntry, readingToEntry } = jmdictFurigana;
-            const literalHit = search(textToEntry, literal, 'reading', morphemeToStringLiteral(m, jmdictFurigana));
-            if (literalHit) {
-                return literalHit.furigana;
-            }
-            const pronunciationHit = search(readingToEntry, pronunciation, 'text', [literal]);
-            if (pronunciationHit) {
-                return pronunciationHit.furigana;
-            }
-            // help with 一本/rendaku
-            if (literal.length === 1) {
-                return [{ ruby: literal, rt: morphemeToStringLiteral(m).join('・') }];
-            }
-            // for e.g. 住ん|で|い|ます but not 一本 (pronounced pon but lemma=hon: rendaku)
-            // if you reach here, there's nothing ensuring that the furigana found will match `pronunciation`!
-            const lemmaHit = search(textToEntry, lemma, 'reading', morphemeToStringLiteral({ lemma, lemmaReading, literal: lemma, pronunciation: lemmaReading }, jmdictFurigana));
-            if (lemmaHit) {
-                const furiganaDict = new Map();
-                for (const f of lemmaHit.furigana) {
-                    if (typeof f === 'string') {
-                        continue;
-                    }
-                    furiganaDict.set(f.ruby, f.rt);
-                }
-                const chars = literal.split('');
-                let kanji = chars.filter(curtiz_utils_1.hasKanji);
-                const annotatedChars = chars.slice();
-                // start from all kanji characters in a string, see if that's in furiganaDict, if not, chop last
-                while (kanji.length) {
-                    const hit = triu(kanji).find(ks => furiganaDict.has(ks.join('')));
-                    if (hit) {
-                        const hitstr = hit.join('');
-                        const idx = literal.indexOf(hitstr);
-                        annotatedChars[idx] = { ruby: hitstr, rt: furiganaDict.get(hitstr) || hitstr };
-                        for (let i = idx + 1; i < idx + hitstr.length; i++) {
-                            annotatedChars[i] = '';
-                        }
-                        kanji = kanji.slice(hitstr.length);
-                        continue;
-                    }
-                    // no hit found, kanji won't shrink to empty, break now
-                    break;
-                }
-                if (kanji.length === 0) {
-                    return annotatedChars.filter(x => x !== '');
-                }
-            }
-            // const lemmaReadingHit = search(readingToEntry, lemmaReading, 'text', lemma);
-            // if (lemmaReadingHit) { return lemmaReadingHit.furigana; }
-            // We couldn't rely on JMDictFurigana to help us out. The best we can do now is to use MeCab's parsing.
-            // For example: literal="帰っ" and rt="かえっ". Also 鍛え直し vs きたえなおし.
-            // In general, literal can mix kanji and kana, rt will have only kana.
-            {
-                const rt = morphemeToStringLiteral(m)[0];
-                if (rt === literal) {
-                    return [literal];
-                }
-                const ret = simpleConvertMecabReading(literal, rt);
-                console.log({ ret });
-                return ret;
-            }
-        })));
-        return furigana;
-    });
+            const ret = simpleConvertMecabReading(literal, rt);
+            console.log({ ret });
+            return ret;
+        }
+    }));
+    return furigana;
 }
 exports.morphemesToFuriganaCore = morphemesToFuriganaCore;
 /*
@@ -817,16 +800,16 @@ function checkFurigana(sentence, furigana) {
     return ret;
 }
 function toruby(f) { return typeof f === 'string' ? f : f.ruby; }
-function jmdictIdsToWords(hits) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const { db } = yield exports.jmdictPromise;
-        return jmdict_simplified_node_1.idsToWords(db, hits.map(o => o.wordId));
-    });
+async function jmdictIdsToWords(searches) {
+    const { db } = await exports.jmdictPromise;
+    const missingWord = searches.filter(x => !x.word);
+    console.log('MISSING', missingWord);
+    const missingWordsFound = await jmdict_simplified_node_1.idsToWords(db, missingWord.map(o => o.wordId));
+    let i = 0;
+    return searches.map(x => x.word ? x.word : missingWordsFound[i++]);
 }
 exports.jmdictIdsToWords = jmdictIdsToWords;
-function getTags() {
-    return __awaiter(this, void 0, void 0, function* () { return exports.jmdictPromise.then(({ db }) => jmdict_simplified_node_1.getTags(db)); });
-}
+async function getTags() { return exports.jmdictPromise.then(({ db }) => jmdict_simplified_node_1.getTags(db)); }
 exports.getTags = getTags;
 function contextClozeToString(c) {
     return (c.left || c.right) ? `${c.left}[${c.cloze}]${c.right}` : c.cloze;
@@ -839,48 +822,49 @@ const tagsPromise = exports.jmdictPromise.then(({ db }) => db)
     .then(raw => JSON.parse(raw));
 const kanjidicPromise = kanjidic_1.setupSimple();
 const wanikaniGraph = JSON.parse(fs_1.readFileSync(path_1.default.join(__dirname, 'wanikani-kanji-graph.json'), 'utf8'));
-function handleSentence(sentence, overrides = {}, includeWord = true, extractParticlesConj = true, nBest = 1) {
-    return __awaiter(this, void 0, void 0, function* () {
-        if (!curtiz_utils_1.hasKanji(sentence) && !curtiz_utils_1.hasKana(sentence)) {
-            const resBody = sentence;
-            return [resBody];
-        }
-        const res = yield mecabJdepp(sentence, nBest);
-        return Promise.all(res.map((res) => __awaiter(this, void 0, void 0, function* () {
-            const morphemes = res.morphemes;
-            const bunsetsus = res.bunsetsus;
-            const furigana = yield morphemesToFurigana(sentence, morphemes, overrides);
-            const tags = yield tagsPromise;
-            const dictHits = yield enumerateDictionaryHits(morphemes, true, 10);
-            for (let i = 0; i < dictHits.length; i++) {
-                for (let j = 0; j < dictHits[i].results.length; j++) {
-                    const words = yield jmdictIdsToWords(dictHits[i].results[j].results);
-                    for (let k = 0; k < words.length; k++) {
-                        dictHits[i].results[j].results[k].summary = displayWordLight(words[k], tags);
-                        if (includeWord) {
-                            const word = words[k];
-                            dictHits[i].results[j].results[k].word = word;
-                            const thisTag = dictHits[i].results[j].results[k].tags;
-                            for (const tag of word.sense.flatMap(s => s.field.concat(s.dialect).concat(s.misc).concat(s.partOfSpeech))) {
-                                thisTag[tag] = tags[tag];
-                            }
+async function handleSentence(sentence, overrides = {}, includeWord = true, extractParticlesConj = true, nBest = 1) {
+    if (!curtiz_utils_1.hasKanji(sentence) && !curtiz_utils_1.hasKana(sentence)) {
+        const resBody = sentence;
+        return [resBody];
+    }
+    const res = await mecabJdepp(sentence, nBest);
+    return Promise.all(res.map(async (res) => {
+        const morphemes = res.morphemes;
+        const bunsetsus = res.bunsetsus;
+        const furigana = await morphemesToFurigana(sentence, morphemes, overrides);
+        const tags = await tagsPromise;
+        const dictHits = await enumerateDictionaryHits(morphemes, true, 10);
+        for (let i = 0; i < dictHits.length; i++) {
+            for (let j = 0; j < dictHits[i].results.length; j++) {
+                const words = await jmdictIdsToWords(dictHits[i].results[j].results);
+                for (let k = 0; k < words.length; k++) {
+                    dictHits[i].results[j].results[k].summary = displayWordLight(words[k], tags);
+                    if (includeWord) {
+                        const word = words[k];
+                        dictHits[i].results[j].results[k].word = word;
+                        const thisTag = dictHits[i].results[j].results[k].tags;
+                        for (const tag of word.sense.flatMap(s => s.field.concat(s.dialect).concat(s.misc).concat(s.partOfSpeech))) {
+                            thisTag[tag] = tags[tag];
                         }
                     }
                 }
             }
-            const kanjidic = yield kanjidicPromise;
-            const kanjidicHits = Object.fromEntries(sentence.split('')
-                .filter(c => c in kanjidic)
-                .map(c => [c, Object.assign(Object.assign({}, kanjidic[c]), { dependencies: searchMap(treeSearch(wanikaniGraph, c), c => (kanjidic[c] || null))
-                        .children })]));
-            let clozes = undefined;
-            if (extractParticlesConj) {
-                clozes = yield identifyFillInBlanks(bunsetsus.map(o => o.morphemes));
-            }
-            const resBody = { furigana, hits: dictHits, kanjidic: kanjidicHits, clozes, tags: includeWord ? tags : undefined, bunsetsus };
-            return resBody;
-        })));
-    });
+        }
+        const kanjidic = await kanjidicPromise;
+        const kanjidicHits = Object.fromEntries(sentence.split('')
+            .filter(c => c in kanjidic)
+            .map(c => [c, {
+                ...kanjidic[c],
+                dependencies: searchMap(treeSearch(wanikaniGraph, c), c => (kanjidic[c] || null))
+                    .children
+            }]));
+        let clozes = undefined;
+        if (extractParticlesConj) {
+            clozes = await identifyFillInBlanks(bunsetsus.map(o => o.morphemes));
+        }
+        const resBody = { furigana, hits: dictHits, kanjidic: kanjidicHits, clozes, tags: includeWord ? tags : undefined, bunsetsus };
+        return resBody;
+    }));
 }
 exports.handleSentence = handleSentence;
 function treeSearch(tree, node, seen = new Set()) {
@@ -901,34 +885,33 @@ if (module === require.main) {
         }
         return d.conjugation;
     }
-    (() => __awaiter(void 0, void 0, void 0, function* () {
-        var _a, _b;
+    (async () => {
         for (const line of ['かぜひいた',
         ]) {
             console.log('\n===\n');
-            const xs = yield handleSentence(line);
+            const xs = await handleSentence(line);
             for (const x of xs) {
                 if (typeof x === 'string') {
                     continue;
                 }
                 console.log(x.furigana);
                 console.log('conj');
-                p((_a = x.clozes) === null || _a === void 0 ? void 0 : _a.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')));
+                p(x.clozes?.conjugatedPhrases.map(o => o.morphemes.map(m => m.literal).join('|')));
                 console.log('deconj');
-                console.dir((_b = x.clozes) === null || _b === void 0 ? void 0 : _b.conjugatedPhrases.map(o => o.deconj.map(m => renderDeconjugation(m))), { depth: null });
+                console.dir(x.clozes?.conjugatedPhrases.map(o => o.deconj.map(m => renderDeconjugation(m))), { depth: null });
                 // console.log('particles')
                 // console.dir(x.particlesConjphrases.particles.map(o => [o.startIdx, o.endIdx, o.cloze.cloze, o.chino.length]))
                 // p(x.particlesConjphrases.particles.map(o => o.chino))
                 const SHOW_HITS = false;
                 if (SHOW_HITS) {
                     const MAX_LINES = 10000;
-                    const { db } = yield exports.jmdictPromise;
-                    const tags = JSON.parse(yield jmdict_simplified_node_1.getField(db, 'tags'));
+                    const { db } = await exports.jmdictPromise;
+                    const tags = JSON.parse(await jmdict_simplified_node_1.getField(db, 'tags'));
                     for (const fromStart of x.hits) {
                         for (const fromEnd of fromStart.results) {
                             console.log(`  - Vocab: ${contextClozeOrStringToString(fromEnd.run)} INFO`);
                             const hits = fromEnd.results.slice(0, MAX_LINES);
-                            const words = yield jmdictIdsToWords(hits);
+                            const words = await jmdictIdsToWords(hits);
                             for (const [wi, w] of words.entries()) {
                                 console.log('    - ' + hits[wi].search + ' | ' + displayWordLight(w, tags));
                             }
@@ -940,5 +923,5 @@ if (module === require.main) {
                 }
             }
         }
-    }))();
+    })();
 }

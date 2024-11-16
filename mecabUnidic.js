@@ -1,14 +1,5 @@
 #!/usr/bin/env node
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 const spawn = require('child_process').spawn;
 const assert = require('assert');
@@ -420,38 +411,36 @@ if (require.main === module) {
             console.log(formatRow(row, widths));
         }
     }
-    (function () {
-        return __awaiter(this, void 0, void 0, function* () {
-            let text = '今日は　良い天気だ。\n\nたのしいですか。\n\n何できた？';
-            if (process.argv.length <= 2) {
-                // no arguments, read from stdin. If stdin is empty, use default.
-                text = (yield getStdin()) || text;
+    (async function () {
+        let text = '今日は　良い天気だ。\n\nたのしいですか。\n\n何できた？';
+        if (process.argv.length <= 2) {
+            // no arguments, read from stdin. If stdin is empty, use default.
+            text = (await getStdin()) || text;
+        }
+        else {
+            text = (await Promise.all(process.argv.slice(2).map(f => promisify(readFile)(f, 'utf8'))))
+                .join('\n')
+                .replace(/\r/g, '');
+        }
+        let nBest = 1;
+        if (process.env['MECAB_NBEST']) {
+            const candidate = Number(process.env['MECAB_NBEST']);
+            if (candidate && isFinite(candidate) && candidate > 0) {
+                nBest = candidate;
             }
-            else {
-                text = (yield Promise.all(process.argv.slice(2).map(f => promisify(readFile)(f, 'utf8'))))
-                    .join('\n')
-                    .replace(/\r/g, '');
+        }
+        // Output
+        const parseds = parseMecab(await invokeMecab(text.trim(), nBest), nBest);
+        for (const sentence of parseds.morphemes) {
+            for (const [n, parsed] of sentence.entries()) {
+                console.log(`\n# ${n + 1} parsing`);
+                const table = parsed.map(m => {
+                    return m ? [m.literal, m.pronunciation, m.lemmaReading, m.lemma, m.partOfSpeech.join(ELEMENTSEP),
+                        (m.inflectionType || []).join(ELEMENTSEP), (m.inflection || []).join(ELEMENTSEP)] : [];
+                });
+                printMarkdownTable(table, 'Literal,Pron.,Lemma Read.,Lemma,PoS,Infl. Type,Infl.'.split(','));
             }
-            let nBest = 1;
-            if (process.env['MECAB_NBEST']) {
-                const candidate = Number(process.env['MECAB_NBEST']);
-                if (candidate && isFinite(candidate) && candidate > 0) {
-                    nBest = candidate;
-                }
-            }
-            // Output
-            const parseds = parseMecab(yield invokeMecab(text.trim(), nBest), nBest);
-            for (const sentence of parseds.morphemes) {
-                for (const [n, parsed] of sentence.entries()) {
-                    console.log(`\n# ${n + 1} parsing`);
-                    const table = parsed.map(m => {
-                        return m ? [m.literal, m.pronunciation, m.lemmaReading, m.lemma, m.partOfSpeech.join(ELEMENTSEP),
-                            (m.inflectionType || []).join(ELEMENTSEP), (m.inflection || []).join(ELEMENTSEP)] : [];
-                    });
-                    printMarkdownTable(table, 'Literal,Pron.,Lemma Read.,Lemma,PoS,Infl. Type,Infl.'.split(','));
-                }
-            }
-            // DELETED WASM CHECK (mecab-emscripten-node)
-        });
+        }
+        // DELETED WASM CHECK (mecab-emscripten-node)
     })();
 }
