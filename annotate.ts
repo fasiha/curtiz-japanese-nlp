@@ -41,6 +41,7 @@ import {
 } from './interfaces';
 import {addJdepp, Bunsetsu} from './jdepp';
 import {setupSimple as kanjidicSetup, SimpleCharacter} from './kanjidic';
+import {lemmaVsLiteral} from './lemmaVsLiteral';
 import {invokeMecab, maybeMorphemesToMorphemes, Morpheme, parseMecab} from './mecabUnidic';
 
 export * from './interfaces';
@@ -135,9 +136,9 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
 
     for (let endIdx = Math.min(morphemes.length, startIdx + 5); endIdx > startIdx; --endIdx) {
       const run = morphemes.slice(startIdx, endIdx);
-      const runLiteralCore = bunsetsuToString(run);
-      const runLiteral = simplify(generateContextClozed(bunsetsuToString(morphemes.slice(0, startIdx)), runLiteralCore,
-                                                        bunsetsuToString(morphemes.slice(endIdx))));
+      const runLiteralCore = bunsetsuToLiteral(run);
+      const runLiteral = simplify(generateContextClozed(bunsetsuToLiteral(morphemes.slice(0, startIdx)), runLiteralCore,
+                                                        bunsetsuToLiteral(morphemes.slice(endIdx))));
       if (!full) {
         // skip particles like は and も if they're by themselves as an optimization
         if (runLiteralCore.length === 1 && hasKana(runLiteralCore[0]) && runLiteralCore === run[0].lemma) { continue; }
@@ -213,9 +214,9 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
         const endIdx = startIdx + 1;
 
         const run = morphemes.slice(startIdx, endIdx);
-        const runLiteralCore = bunsetsuToString(run);
-        const runLiteral = simplify(generateContextClozed(bunsetsuToString(morphemes.slice(0, startIdx)),
-                                                          runLiteralCore, bunsetsuToString(morphemes.slice(endIdx))));
+        const runLiteralCore = bunsetsuToLiteral(run);
+        const runLiteral = simplify(generateContextClozed(bunsetsuToLiteral(morphemes.slice(0, startIdx)),
+                                                          runLiteralCore, bunsetsuToLiteral(morphemes.slice(endIdx))));
 
         results.push({endIdx, run: runLiteral, results: dedupeLimit(scored, o => o.wordId, limit)});
       }
@@ -326,7 +327,8 @@ function forkingPaths<T>(v: T[][]): T[][] {
   return ret;
 }
 
-const bunsetsuToString = (morphemes: Morpheme[]) => morphemes.map(m => m.literal).join('');
+const bunsetsuToLiteral = (morphemes: Morpheme[]) => morphemes.map(m => m.literal).join('');
+const bunsetsuToReading = (morphemes: Morpheme[]) => morphemes.map(m => m.pronunciation).join('');
 function betterMorphemePredicate(m: Morpheme): boolean {
   return !(m.partOfSpeech[0] === 'supplementary_symbol') && !(m.partOfSpeech[0] === 'particle');
 }
@@ -334,7 +336,8 @@ function betterMorphemePredicate(m: Morpheme): boolean {
 async function morphemesToConjPhrases(startIdx: number, goodBunsetsu: Morpheme[], fullCloze: ContextCloze,
                                       verbose = false): Promise<ConjugatedPhrase> {
   const endIdx = startIdx + goodBunsetsu.length;
-  const cloze = bunsetsuToString(goodBunsetsu);
+  const cloze = bunsetsuToLiteral(goodBunsetsu);
+  const clozeReading = bunsetsuToReading(goodBunsetsu);
   const jf = await jmdictFuriganaPromise;
 
   const lemmas = goodBunsetsu.map(o => {
@@ -361,10 +364,13 @@ async function morphemesToConjPhrases(startIdx: number, goodBunsetsu: Morpheme[]
   for (const mergeSuffixes of [true, false]) {
     // sometimes the lemma is too helpful: "ワンダフル-wonderful", so split on dash
     let dictionaryForm = goodBunsetsu[0].lemma.split('-')[0];
+    let dictionaryFormReading = goodBunsetsu[0].lemmaReading;
     if (mergeSuffixes) {
       const nonSuffixIdx = goodBunsetsu.findIndex((m, i) => i > 0 && m.partOfSpeech[0] !== 'suffix');
       if (nonSuffixIdx >= 1) {
-        dictionaryForm += goodBunsetsu.slice(1, nonSuffixIdx).map(m => m.lemma.split('-')[0]).join('');
+        const addition = goodBunsetsu.slice(1, nonSuffixIdx);
+        dictionaryForm += addition.map(m => m.lemma.split('-')[0]).join('');
+        dictionaryFormReading += addition.map(m => m.lemmaReading).join('');
       }
     }
 
@@ -387,6 +393,9 @@ async function morphemesToConjPhrases(startIdx: number, goodBunsetsu: Morpheme[]
     if (deconj.length) {
       deconjs.push(...(deconj as Ugh<typeof deconj>));
     } else {
+      // this sometimes doens't work, let's try a few hacks
+      let hacksSuccess = false;
+
       // sometimes, the lemma has a totally different kanji: 刺される has lemma "差す-他動詞" lol.
       // in these situations, try replacing kanji from the cloze into the dictionary form.
       const clozeKanji = cloze.split('').filter(hasKanji);
@@ -400,8 +409,29 @@ async function morphemesToConjPhrases(startIdx: number, goodBunsetsu: Morpheme[]
                                     : adjDeconjugate(cloze, newDictionaryForm, iAdj);
           if (deconj.length) {
             deconjs.push(...(deconj as Ugh<typeof deconj>));
-            break;
             // if we find something, pray it's good and bail.
+            hacksSuccess = true;
+            break;
+          }
+        }
+      }
+
+      // we have one more trick, useful for cases where UniDic gives "抑える"'s lemma as "押さえる" facepalm: totally
+      // different kanji AND different okurigana
+      if (!hacksSuccess && verbNotAdj) {
+        const proposedLemma = lemmaVsLiteral({
+          literal: cloze,
+          literalReading: clozeReading,
+          lemma: dictionaryForm,
+          lemmaReading: dictionaryFormReading,
+          jmdictFurigana: jf
+        });
+        if (proposedLemma) {
+          // retry with the new lemma
+          const deconj = verbDeconjugate(cloze, proposedLemma, ichidan);
+          if (deconj.length) {
+            deconjs.push(...(deconj as Ugh<typeof deconj>));
+            hacksSuccess = true;
           }
         }
       }
@@ -434,7 +464,7 @@ function* allSlices<T>(v: T[]) {
 
 // Find clozes: particles and conjugated verb/adjective phrases
 export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = false): Promise<FillInTheBlanks> {
-  const sentence = bunsetsus.map(bunsetsuToString).join('');
+  const sentence = bunsetsus.map(bunsetsuToLiteral).join('');
   const conjugatedPhrases: ConjugatedPhrase[] = [];
   const particles: Particle[] = [];
   for (const [bidx, fullBunsetsu] of bunsetsus.entries()) {
@@ -442,7 +472,7 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
     if (!fullBunsetsu[0]) { continue; }
     for (const {start, slice: sliceBunsetsu} of allSlices(fullBunsetsu)) {
       const left =
-          bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(fullBunsetsu.slice(0, start));
+          bunsetsus.slice(0, bidx).map(bunsetsuToLiteral).join('') + bunsetsuToLiteral(fullBunsetsu.slice(0, start));
       const first = sliceBunsetsu[0];
 
       if (verbose) { console.log('g', sliceBunsetsu.map(o => o.literal).join(' ')) }
@@ -460,7 +490,7 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
            (pos0.startsWith('verb') || pos0.endsWith('_verb') || pos0.startsWith('adject') ||
             pos0Last === 'verbal_suru' || pos0Last.startsWith('adjectival'))) ||
           ((pos0.startsWith('aux') && (pos1.startsWith('desu') || pos1.startsWith('da'))))) {
-        const middle = bunsetsuToString(sliceBunsetsu);
+        const middle = bunsetsuToLiteral(sliceBunsetsu);
         const right = sentence.slice(left.length + middle.length);
         const cloze = generateContextClozed(left, middle, right)
         const res = await morphemesToConjPhrases(startIdx + start, sliceBunsetsu, cloze)
@@ -476,9 +506,9 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
         const startIdxParticle = startIdx + pidx;
         const endIdx = startIdxParticle + 1;
         const left =
-            bunsetsus.slice(0, bidx).map(bunsetsuToString).join('') + bunsetsuToString(fullBunsetsu.slice(0, pidx));
+            bunsetsus.slice(0, bidx).map(bunsetsuToLiteral).join('') + bunsetsuToLiteral(fullBunsetsu.slice(0, pidx));
         const right =
-            bunsetsuToString(fullBunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToString).join('');
+            bunsetsuToLiteral(fullBunsetsu.slice(pidx + 1)) + bunsetsus.slice(bidx + 1).map(bunsetsuToLiteral).join('');
         const cloze = generateContextClozed(left, particle.literal, right);
         const chino = lookup(cloze.cloze);
         if (particle.literal !== particle.lemma) {
@@ -509,8 +539,8 @@ export async function identifyFillInBlanks(bunsetsus: Morpheme[][], verbose = fa
       if (hits.length) {
         const first = adjacent[0];
         const last = adjacent[adjacent.length - 1];
-        const left = bunsetsuToString(allMorphemes.slice(0, first.startIdx));
-        const right = bunsetsuToString(allMorphemes.slice(last.endIdx));
+        const left = bunsetsuToLiteral(allMorphemes.slice(0, first.startIdx));
+        const right = bunsetsuToLiteral(allMorphemes.slice(last.endIdx));
         const cloze = generateContextClozed(left, combined, right);
 
         particles.push({
@@ -951,7 +981,7 @@ if (module === require.main) {
   (async () => {
     for (
         const line of
-            ['かぜひいた',
+            ['抑えられなく',
              // ブラックシャドー団は集団で盗みを行う窃盗団でお金持ちの家を狙い、家にある物全て根こそぎ盗んでいきます。',
              // 'お待ちしておりました',
              // '買ったんだ',
