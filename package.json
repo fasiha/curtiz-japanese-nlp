@@ -41,7 +41,7 @@
     "cors": "^2.8.5",
     "curtiz-utils": "github:fasiha/curtiz-utils",
     "dotenv": "^8.2.0",
-    "eastasianwidth": "^0.2.0",
+    "eastasianwidth": "^0.3.0",
     "express": "^4.17.1",
     "fp-ts": "^2.8.1",
     "get-stdin": "^7.0.0",

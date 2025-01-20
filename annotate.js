@@ -7,6 +7,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const curtiz_utils_1 = require("curtiz-utils");
+const eastasianwidth_1 = require("eastasianwidth");
 const fs_1 = require("fs");
 const jmdict_furigana_node_1 = require("jmdict-furigana-node");
 const jmdict_simplified_node_1 = require("jmdict-simplified-node");
@@ -43,6 +44,7 @@ async function mecabJdepp(sentence, nBest = 1) {
     return morphemes.map((attempt, idx) => ({ morphemes: attempt, bunsetsus: bunsetsus[idx] }));
 }
 exports.mecabJdepp = mecabJdepp;
+const hasFullWidth = (s) => s.split('').some(c => eastasianwidth_1.eastAsianWidth(c) === 'F');
 const p = (x) => console.dir(x, { depth: null });
 /**
  * Given MeCab morphemes, return a triply-nested array of JMDict hits.
@@ -117,7 +119,7 @@ async function enumerateDictionaryHits(plainMorphemes, full = true, limit = -1) 
             }
             // Search literals if needed, this works around MeCab mis-readings like お父さん->おちちさん
             {
-                const kanjiSearches = forkingPaths(run.map(m => m.searchKanji)).map(v => v.join('')).filter(curtiz_utils_1.hasKanji);
+                const kanjiSearches = forkingPaths(run.map(m => m.searchKanji)).map(v => v.join('')).filter(s => curtiz_utils_1.hasKanji(s) || hasFullWidth(s));
                 const kanjiSubhits = await Promise.all(kanjiSearches.map(search => jmdict_simplified_node_1.kanjiBeginning(db, search, DICTIONARY_LIMIT)));
                 scored.push(...helperSearchesHitsToScored(kanjiSearches, kanjiSubhits, 'kanji'));
             }
@@ -912,7 +914,7 @@ if (module === require.main) {
         return d.conjugation;
     }
     (async () => {
-        for (const line of ['抑えられなく',
+        for (const line of ['Ｔシャツ',
         ]) {
             console.log('\n===\n');
             const xs = await handleSentence(line);

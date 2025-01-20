@@ -8,6 +8,7 @@ import {
   hasKanji,
   kata2hira
 } from 'curtiz-utils'
+import {eastAsianWidth} from 'eastasianwidth';
 import {readdirSync, readFileSync} from 'fs';
 import {Entry, Furigana, JmdictFurigana, Ruby, setup as setupJmdictFurigana} from 'jmdict-furigana-node';
 import {
@@ -90,6 +91,7 @@ export async function mecabJdepp(sentence: string, nBest = 1): Promise<MecabJdep
   return morphemes.map((attempt, idx) => ({morphemes: attempt, bunsetsus: bunsetsus[idx]}));
 }
 
+const hasFullWidth = (s: string): boolean => s.split('').some(c => eastAsianWidth(c) === 'F');
 const p = (x: any) => console.dir(x, {depth: null});
 type WithSearchReading<T> = T&{ searchReading: string[]; };
 type WithSearchKanji<T> = T&{ searchKanji: string[]; };
@@ -175,7 +177,8 @@ export async function enumerateDictionaryHits(plainMorphemes: Morpheme[], full =
       }
       // Search literals if needed, this works around MeCab mis-readings like お父さん->おちちさん
       {
-        const kanjiSearches = forkingPaths(run.map(m => m.searchKanji)).map(v => v.join('')).filter(hasKanji);
+        const kanjiSearches =
+            forkingPaths(run.map(m => m.searchKanji)).map(v => v.join('')).filter(s => hasKanji(s) || hasFullWidth(s));
         const kanjiSubhits =
             await Promise.all(kanjiSearches.map(search => kanjiBeginning(db, search, DICTIONARY_LIMIT)));
         scored.push(...helperSearchesHitsToScored(kanjiSearches, kanjiSubhits, 'kanji'));
@@ -981,7 +984,7 @@ if (module === require.main) {
   (async () => {
     for (
         const line of
-            ['抑えられなく',
+            ['Ｔシャツ',
              // ブラックシャドー団は集団で盗みを行う窃盗団でお金持ちの家を狙い、家にある物全て根こそぎ盗んでいきます。',
              // 'お待ちしておりました',
              // '買ったんだ',
