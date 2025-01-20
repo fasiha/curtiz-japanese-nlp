@@ -48,7 +48,7 @@
     "io-ts": "^2.2.9",
     "jmdict-furigana-node": "git+https://github.com/fasiha/jmdict-furigana-node.git",
     "jmdict-simplified-node": "github:fasiha/jmdict-simplified-node",
-    "kamiya-codec": "^4.12.0",
+    "kamiya-codec": "^4.13.0",
     "mecab-emscripten-node": "git+https://github.com/fasiha/mecab-emscripten-node.git",
     "mkdirp": "^1.0.4",
     "node-gzip": "^1.1.2",
