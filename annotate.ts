@@ -335,15 +335,8 @@ const bunsetsuToReading = (morphemes: Morpheme[]) => morphemes.map(m => m.pronun
 function betterMorphemePredicate(m: Morpheme): boolean {
   return !(m.partOfSpeech[0] === 'supplementary_symbol') && !(m.partOfSpeech[0] === 'particle');
 }
-
-async function morphemesToConjPhrases(startIdx: number, goodBunsetsu: Morpheme[], fullCloze: ContextCloze,
-                                      verbose = false): Promise<ConjugatedPhrase> {
-  const endIdx = startIdx + goodBunsetsu.length;
-  const cloze = bunsetsuToLiteral(goodBunsetsu);
-  const clozeReading = bunsetsuToReading(goodBunsetsu);
-  const jf = await jmdictFuriganaPromise;
-
-  const lemmas = goodBunsetsu.map(o => {
+function toLemmaFurigana(morphemes: Morpheme[], jf: JmdictFurigana): Furigana[][] {
+  return morphemes.map(o => {
     const entries = jf.textToEntry.get(o.lemma) || [];
     if (o.lemma.endsWith('-他動詞') && o.partOfSpeech[0] === 'verb') {
       // sometimes ("ひいた" in "かぜひいた"), UniDic lemmas are weird like "引く-他動詞" eyeroll
@@ -353,6 +346,16 @@ async function morphemesToConjPhrases(startIdx: number, goodBunsetsu: Morpheme[]
     const entry = entries.find(e => e.reading === lemmaReading);
     return entry ? entry.furigana : o.lemma === lemmaReading ? [lemmaReading] : [{ruby: o.lemma, rt: lemmaReading}];
   });
+}
+
+async function morphemesToConjPhrases(startIdx: number, goodBunsetsu: Morpheme[], fullCloze: ContextCloze,
+                                      verbose = false): Promise<ConjugatedPhrase> {
+  const endIdx = startIdx + goodBunsetsu.length;
+  const cloze = bunsetsuToLiteral(goodBunsetsu);
+  const clozeReading = bunsetsuToReading(goodBunsetsu);
+  const jf = await jmdictFuriganaPromise;
+
+  const lemmas = toLemmaFurigana(goodBunsetsu, jf);
 
   const ret: ConjugatedPhrase = {deconj: [], startIdx, endIdx, morphemes: goodBunsetsu, cloze: fullCloze, lemmas};
 
@@ -953,8 +956,17 @@ export async function handleSentence(sentence: string, overrides: Record<string,
 
     let clozes: undefined|FillInTheBlanks = undefined;
     if (extractParticlesConj) { clozes = await identifyFillInBlanks(bunsetsus.map(o => o.morphemes)); }
-    const resBody: v1ResSentence =
-        {furigana, hits: dictHits, kanjidic: kanjidicHits, clozes, tags: includeWord ? tags : undefined, bunsetsus};
+
+    const jf = await jmdictFuriganaPromise;
+    const resBody: v1ResSentence = {
+      furigana,
+      hits: dictHits,
+      kanjidic: kanjidicHits,
+      clozes,
+      tags: includeWord ? tags : undefined,
+      bunsetsus,
+      lemmaFurigana: toLemmaFurigana(morphemes, jf)
+    };
     return resBody;
   }))
 }

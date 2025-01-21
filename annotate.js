@@ -268,12 +268,8 @@ const bunsetsuToReading = (morphemes) => morphemes.map(m => m.pronunciation).joi
 function betterMorphemePredicate(m) {
     return !(m.partOfSpeech[0] === 'supplementary_symbol') && !(m.partOfSpeech[0] === 'particle');
 }
-async function morphemesToConjPhrases(startIdx, goodBunsetsu, fullCloze, verbose = false) {
-    const endIdx = startIdx + goodBunsetsu.length;
-    const cloze = bunsetsuToLiteral(goodBunsetsu);
-    const clozeReading = bunsetsuToReading(goodBunsetsu);
-    const jf = await exports.jmdictFuriganaPromise;
-    const lemmas = goodBunsetsu.map(o => {
+function toLemmaFurigana(morphemes, jf) {
+    return morphemes.map(o => {
         const entries = jf.textToEntry.get(o.lemma) || [];
         if (o.lemma.endsWith('-他動詞') && o.partOfSpeech[0] === 'verb') {
             // sometimes ("ひいた" in "かぜひいた"), UniDic lemmas are weird like "引く-他動詞" eyeroll
@@ -283,6 +279,13 @@ async function morphemesToConjPhrases(startIdx, goodBunsetsu, fullCloze, verbose
         const entry = entries.find(e => e.reading === lemmaReading);
         return entry ? entry.furigana : o.lemma === lemmaReading ? [lemmaReading] : [{ ruby: o.lemma, rt: lemmaReading }];
     });
+}
+async function morphemesToConjPhrases(startIdx, goodBunsetsu, fullCloze, verbose = false) {
+    const endIdx = startIdx + goodBunsetsu.length;
+    const cloze = bunsetsuToLiteral(goodBunsetsu);
+    const clozeReading = bunsetsuToReading(goodBunsetsu);
+    const jf = await exports.jmdictFuriganaPromise;
+    const lemmas = toLemmaFurigana(goodBunsetsu, jf);
     const ret = { deconj: [], startIdx, endIdx, morphemes: goodBunsetsu, cloze: fullCloze, lemmas };
     const first = goodBunsetsu[0];
     const pos0 = first.partOfSpeech[0];
@@ -890,7 +893,16 @@ async function handleSentence(sentence, overrides = {}, includeWord = true, extr
         if (extractParticlesConj) {
             clozes = await identifyFillInBlanks(bunsetsus.map(o => o.morphemes));
         }
-        const resBody = { furigana, hits: dictHits, kanjidic: kanjidicHits, clozes, tags: includeWord ? tags : undefined, bunsetsus };
+        const jf = await exports.jmdictFuriganaPromise;
+        const resBody = {
+            furigana,
+            hits: dictHits,
+            kanjidic: kanjidicHits,
+            clozes,
+            tags: includeWord ? tags : undefined,
+            bunsetsus,
+            lemmaFurigana: toLemmaFurigana(morphemes, jf)
+        };
         return resBody;
     }));
 }

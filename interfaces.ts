@@ -7,9 +7,9 @@ import {Bunsetsu} from './jdepp';
 import {SimpleCharacter} from './kanjidic';
 import {Morpheme} from './mecabUnidic';
 
-export type{Furigana, Ruby} from "jmdict-furigana-node";
+export type {Furigana, Ruby} from "jmdict-furigana-node";
 export * from "jmdict-simplified-node/interfaces";
-export type{Morpheme} from './mecabUnidic';
+export type {Morpheme} from './mecabUnidic';
 
 export interface ScoreHit {
   wordId: Word['id'];
@@ -70,6 +70,10 @@ export interface v1ResSentenceAnalyzed {
   clozes?: FillInTheBlanks;
   tags?: Record<string, string>;
   bunsetsus: Bunsetsu<Morpheme>[];
+  /**
+   * Same length as `furigana` (# of morphemes)
+   */
+  lemmaFurigana: Furigana[][];
 }
 export type v1ResSentenceNbest = v1ResSentence[];
 
