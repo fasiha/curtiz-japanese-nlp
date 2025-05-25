@@ -12,6 +12,10 @@ const interfaces_1 = require("./interfaces");
 const app = express_1.default();
 app.use(require('cors')({ origin: true, credentials: true }));
 app.use(require('body-parser').json());
+app.get('/api/v1/sentence/:sentence', async (req, res) => {
+    const { sentence = "" } = req.params;
+    res.json(await annotate_1.handleSentence(sentence, {}, true, true, 1));
+});
 app.post('/api/v1/sentence', async (req, res) => {
     const body = interfaces_1.v1ReqSentence.decode(req.body);
     if (!Either_1.isRight(body)) {
