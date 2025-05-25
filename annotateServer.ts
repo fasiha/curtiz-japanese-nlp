@@ -10,6 +10,10 @@ import {v1ReqSentence, v1ReqSentences, v1ResSentence} from './interfaces';
 const app = express();
 app.use(require('cors')({origin: true, credentials: true}));
 app.use(require('body-parser').json());
+app.get('/api/v1/sentence/:sentence', async (req, res) => {
+  const {sentence = ""} = req.params;
+  res.json(await handleSentence(sentence, {}, true, true, 1));
+});
 app.post('/api/v1/sentence', async (req, res) => {
   const body = v1ReqSentence.decode(req.body);
   if (!isRight(body)) {
