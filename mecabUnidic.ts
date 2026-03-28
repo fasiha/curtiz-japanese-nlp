@@ -337,8 +337,9 @@ export function parseMorpheme(raw: string[]): MaybeMorpheme {
  *
  * If `nBest=1`, `output[0][1]` will not exist.
  */
-export function parseMecab(rawMecab: string, nBest: number = 1) {
-  const sections = rawMecab.split('\nEOS').filter(s => !!s.trim());
+export function parseMecab(rawMecab: string, nBest: number = 1, skipEmpty = true) {
+  const allSections = rawMecab.split('\nEOS');
+  const sections = skipEmpty ? allSections.filter(s => !!s.trim()) : allSections;
   assert(sections.length % nBest === 0)
   const parsings = sections.map(parseMecabSection);
   const parsingsPerSection = partitionBy(parsings, (_, i) => !(i! % nBest));

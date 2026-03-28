@@ -853,6 +853,30 @@ const tagsPromise = exports.jmdictPromise.then(({ db }) => db)
     .then(raw => JSON.parse(raw));
 const kanjidicPromise = kanjidic_1.setupSimple();
 const wanikaniGraph = JSON.parse(fs_1.readFileSync(path_1.default.join(__dirname, 'wanikani-kanji-graph.json'), 'utf8'));
+async function handleFurigana(sentence, overrides = {}) {
+    if (!curtiz_utils_1.hasKanji(sentence) && !curtiz_utils_1.hasKana(sentence)) {
+        return [[sentence]];
+    }
+    const rawMecab = await mecabUnidic_1.invokeMecab(sentence);
+    const { morphemes: allSentencesMorphemes } = mecabUnidic_1.parseMecab(rawMecab, 1, false);
+    const allP = Promise.all(allSentencesMorphemes.map((nBestMorphemes) => {
+        const morphemes = nBestMorphemes[0];
+        if (!morphemes.length) {
+            return Promise.resolve([['\n']]);
+        }
+        return morphemesToFurigana(morphemes.map(o => o.literal).join(''), morphemes, overrides)
+            .then(fs => [...fs, ['\n']]);
+    }));
+    // each non-empty section appends ['\n'], and the trailing empty EOS section adds another — strip all trailing newlines
+    return allP.then(all => {
+        const flat = all.flat();
+        while (flat.length && flat[flat.length - 1].length === 1 && flat[flat.length - 1][0] === '\n') {
+            flat.pop();
+        }
+        return flat;
+    });
+}
+exports.handleFurigana = handleFurigana;
 async function handleSentence(sentence, overrides = {}, includeWord = true, extractParticlesConj = true, nBest = 1) {
     if (!curtiz_utils_1.hasKanji(sentence) && !curtiz_utils_1.hasKana(sentence)) {
         const resBody = sentence;

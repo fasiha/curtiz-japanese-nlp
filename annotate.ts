@@ -910,6 +910,25 @@ const kanjidicPromise = kanjidicSetup();
 const wanikaniGraph: {[k: string]: string[]}&{metadata: Record<string, string>} =
     JSON.parse(readFileSync(path.join(__dirname, 'wanikani-kanji-graph.json'), 'utf8'));
 
+export async function handleFurigana(sentence: string,
+                                     overrides: Record<string, Furigana[]> = {}): Promise<Furigana[][]> {
+  if (!hasKanji(sentence) && !hasKana(sentence)) { return [[sentence]]; }
+  const rawMecab = await invokeMecab(sentence);
+  const {morphemes: allSentencesMorphemes} = parseMecab(rawMecab, 1, false);
+  const allP = Promise.all(allSentencesMorphemes.map((nBestMorphemes) => {
+    const morphemes = nBestMorphemes[0];
+    if (!morphemes.length) { return Promise.resolve([['\n']] as Furigana[][]); }
+    return morphemesToFurigana(morphemes.map(o => o.literal).join(''), morphemes, overrides)
+        .then(fs => [...fs, ['\n']]);
+  }));
+  // each non-empty section appends ['\n'], and the trailing empty EOS section adds another — strip all trailing newlines
+  return allP.then(all => {
+    const flat = all.flat();
+    while (flat.length && flat[flat.length - 1].length === 1 && flat[flat.length - 1][0] === '\n') { flat.pop(); }
+    return flat;
+  });
+}
+
 export async function handleSentence(sentence: string, overrides: Record<string, Furigana[]> = {}, includeWord = true,
                                      extractParticlesConj = true, nBest = 1): Promise<v1ResSentenceNbest> {
   if (!hasKanji(sentence) && !hasKana(sentence)) {

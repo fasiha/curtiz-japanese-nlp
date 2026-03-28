@@ -336,8 +336,9 @@ exports.parseMorpheme = parseMorpheme;
  *
  * If `nBest=1`, `output[0][1]` will not exist.
  */
-function parseMecab(rawMecab, nBest = 1) {
-    const sections = rawMecab.split('\nEOS').filter(s => !!s.trim());
+function parseMecab(rawMecab, nBest = 1, skipEmpty = true) {
+    const allSections = rawMecab.split('\nEOS');
+    const sections = skipEmpty ? allSections.filter(s => !!s.trim()) : allSections;
     assert(sections.length % nBest === 0);
     const parsings = sections.map(parseMecabSection);
     const parsingsPerSection = curtiz_utils_1.partitionBy(parsings, (_, i) => !(i % nBest));

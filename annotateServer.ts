@@ -4,12 +4,16 @@ require('dotenv').config();
 import express from 'express';
 import {isRight} from 'fp-ts/lib/Either';
 
-import {jmdictIdsToWords, handleSentence} from './annotate';
+import {jmdictIdsToWords, handleSentence, handleFurigana} from './annotate';
 import {v1ReqSentence, v1ReqSentences, v1ResSentence} from './interfaces';
 
 const app = express();
 app.use(require('cors')({origin: true, credentials: true}));
 app.use(require('body-parser').json());
+app.get('/api/v1/furigana/:sentence', async (req, res) => {
+  const {sentence = ""} = req.params;
+  res.json(await handleFurigana(sentence));
+});
 app.get('/api/v1/sentence/:sentence', async (req, res) => {
   const {sentence = ""} = req.params;
   res.json(await handleSentence(sentence, {}, true, true, 1));
